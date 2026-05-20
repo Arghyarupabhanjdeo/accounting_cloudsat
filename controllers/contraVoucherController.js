@@ -1,0 +1,659 @@
+import pool from "../db.js";
+import fs from "fs";
+import path from "path";
+import { generateContraVoucherPDF } from "../utils/contraVoucherPdfUtils.js";
+
+const getAccountName = async (ledgerId, companyId) => {
+  if (!ledgerId) return "N/A";
+  try {
+    const [[ledger]] = await pool.query("SELECT name FROM ledgers WHERE id = ? AND companyId = ?", [ledgerId, companyId]);
+    return ledger ? ledger.name : "N/A";
+  } catch (err) {
+    console.error("Error in getAccountName:", err);
+    return "N/A";
+  }
+};
+
+// CREATE Contra Voucher
+
+
+// export const createContraVoucher = async (req, res) => {
+//   const { companyId } = req.params;
+//   console.log("contra Receving Body",req.body);
+
+//   const {
+//     date,
+//     narration,
+//     gstType,
+//     gstRate,
+//     transactions,
+//     ledgerId 
+//   } = req.body;
+
+//   try {
+//     const totalAmount = transactions.reduce(
+//       (sum, t) => sum + (parseFloat(t.amount) || 0),
+//       0
+//     );
+
+//     const ledgerId =2
+//     const gstAmount = (totalAmount * (gstRate || 0)) / 100;
+//     const grandTotal = totalAmount + gstAmount;
+
+//     // Insert Voucher (header)
+//     const [voucherResult] = await pool.query(
+//       `INSERT INTO contra_vouchers 
+//        (companyId, date, narration, gstType, gstRate, gstAmount, totalAmount, grandTotal)
+//        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+//       [
+//         companyId,
+//         date,
+//         narration,
+//         gstType,
+//         gstRate,
+//         gstAmount,
+//         totalAmount,
+//         grandTotal,
+//       ]
+//     );
+
+//     const voucherId = voucherResult.insertId;
+
+//     // Insert Transactions
+//     for (let t of transactions) {
+//       await pool.query(
+//         `INSERT INTO contra_transactions 
+//          (voucherId, fromAccount, toAccount, amount, narration)
+//          VALUES (?, ?, ?, ?, ?)`,
+//         [voucherId, t.fromAccount, t.toAccount, t.amount, t.narration]
+//       );
+//     }
+
+//     res.status(201).json({
+//       success: true,
+//       message: "Contra Voucher Created Successfully",
+//       voucherId,
+//     });
+
+//   } catch (error) {
+//     console.error("CREATE CONTRA ERROR:", error);
+//     res.status(500).json({ success: false, message: error.message });
+//   }
+// };
+export const createContraVoucher = async (req, res) => {
+  const { companyId } = req.params;
+  console.log("contra Receving Body", req.body);
+
+  const {
+    voucherNo,
+    date,
+    narration,
+    gstType,
+    gstRate,
+    transactions,
+  } = req.body;
+
+  try {
+    const totalAmount = transactions.reduce(
+      (sum, t) => sum + (parseFloat(t.amount) || 0),
+      0
+    );
+
+    const gstAmount = (totalAmount * (gstRate || 0)) / 100;
+    const grandTotal = totalAmount + gstAmount;
+
+    // Insert voucher header
+    const [voucherResult] = await pool.query(
+      `INSERT INTO contra_vouchers 
+        (companyId, voucherNo, date, narration, gstType, gstRate, gstAmount, totalAmount, grandTotal)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        companyId,
+        voucherNo,
+        date,
+        narration,
+        gstType,
+        gstRate,
+        gstAmount,
+        totalAmount,
+        grandTotal,
+      ]
+    );
+
+    const voucherId = voucherResult.insertId;
+
+    // Process each transaction
+    for (let t of transactions) {
+
+      // 1️⃣ INSERT transaction row
+      await pool.query(
+        `INSERT INTO contra_transactions 
+           (voucherId, fromAccount, toAccount, amount, narration)
+         VALUES (?, ?, ?, ?, ?)`,
+        [voucherId, t.fromAccount, t.toAccount, t.amount, t.narration]
+      );
+
+      // 2️⃣ UPDATE ledger balances
+
+      const amount = parseFloat(t.amount) || 0;
+
+      // Reduce FROM ledger closing balance
+      await pool.query(
+        `UPDATE ledgers 
+         SET closingBalance = closingBalance - ?
+         WHERE id = ? AND companyId = ?`,
+        [amount, t.fromAccount, companyId]
+      );
+
+      // Increase TO ledger closing balance
+      await pool.query(
+        `UPDATE ledgers 
+         SET closingBalance = closingBalance + ?
+         WHERE id = ? AND companyId = ?`,
+        [amount, t.toAccount, companyId]
+      );
+    }
+
+    // Generate and save PDF on create
+    let pdfPath = "";
+    try {
+      const pdfTransactions = [];
+      for (let t of transactions) {
+        pdfTransactions.push({
+          fromAccountName: await getAccountName(t.fromAccount, companyId),
+          toAccountName: await getAccountName(t.toAccount, companyId),
+          amount: t.amount
+        });
+      }
+
+      const [companyRows] = await pool.query(`SELECT name FROM companies WHERE id = ?`, [companyId]);
+      let companyName = companyRows.length > 0 ? companyRows[0].name : "Cloudsat Private Limited";
+      if (!companyName || companyName === "Company Name" || companyName === "Ashwashana Private Limited") {
+        companyName = "Cloudsat Private Limited";
+      }
+
+      pdfPath = `uploads/contra/Contra_${voucherNo || voucherId}_${Date.now()}.pdf`;
+
+      await generateContraVoucherPDF({ companyName, voucherNo: voucherNo || voucherId, date, transactions: pdfTransactions, total: totalAmount, narration }, pdfPath);
+      await pool.query(`UPDATE contra_vouchers SET pdf_path = ? WHERE id = ?`, [pdfPath, voucherId]);
+    } catch (pdfErr) {
+      console.error("Error generating PDF on create:", pdfErr);
+    }
+
+    res.status(201).json({
+      success: true,
+      message: "Contra Voucher Created Successfully",
+      voucherId,
+      pdf_path: pdfPath,
+    });
+
+  } catch (error) {
+    console.error("CREATE CONTRA ERROR:", error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// GET All Contra Vouchers (for a company)
+// export const getContraVouchers = async (req, res) => {
+//   const { companyId } = req.params;
+//   try {
+//     const [rows] = await pool.query(
+//       `SELECT * FROM contra_vouchers WHERE companyId = ? ORDER BY id DESC`,
+//       [companyId]
+//     );
+
+//     res.status(200).json({
+//       message: "Contra Vouchers Fetched",
+//       data: rows,
+//     });
+//   } catch (error) {
+//     console.error("FETCH ERROR:", error);
+//     res.status(500).json({ message: "Internal Server Error" });
+//   }
+// };
+export const getContraVouchers = async (req, res) => {
+  const { companyId } = req.params;
+
+  try {
+
+    const [vouchers] = await pool.query(
+      `SELECT * FROM contra_vouchers WHERE companyId = ? ORDER BY id DESC`,
+      [companyId]
+    );
+
+    if (vouchers.length === 0) {
+      return res.status(200).json({
+        message: "No Contra Vouchers Found",
+        data: [],
+      });
+    }
+
+    // 2️⃣ Fetch ALL Contra Transactions for these vouchers
+    const voucherIds = vouchers.map((v) => v.id);
+
+    const [transactions] = await pool.query(
+      `SELECT * FROM contra_transactions WHERE voucherId IN (?)`,
+      [voucherIds]
+    );
+
+    // 3️⃣ Merge transactions into each voucher
+    const finalData = vouchers.map((voucher) => ({
+      ...voucher,
+      transactions: transactions.filter(
+        (t) => t.voucherId === voucher.id
+      ),
+    }));
+
+    console.log(finalData);
+
+    // 4️⃣ Send Response
+    res.status(200).json({
+      message: "Contra vouchers with transactions fetched!",
+      data: finalData,
+    });
+
+  } catch (error) {
+    console.error("FETCH ERROR:", error);
+    res.status(500).json({ message: "Internal Server Error" });
+  }
+};
+
+// GET Single Voucher (with all transactions)
+export const getContraVoucherById = async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    const [[voucher]] = await pool.query(
+      `SELECT * FROM contra_vouchers WHERE id = ?`,
+      [id]
+    );
+
+    if (!voucher) {
+      return res.status(404).json({ message: "Voucher not found" });
+    }
+
+    const [transactions] = await pool.query(
+      `SELECT * FROM contra_transactions WHERE voucherId = ?`,
+      [id]
+    );
+
+    res.status(200).json({
+      message: "Voucher Fetched",
+      voucher,
+      transactions,
+    });
+  } catch (error) {
+    console.error("FETCH SINGLE ERROR:", error);
+    res.status(500).json({ message: "Internal Server Error" });
+  }
+};
+
+// DELETE voucher
+export const deleteContraVoucher = async (req, res) => {
+  const { id } = req.params;
+  const conn = await pool.getConnection();
+
+  try {
+    await conn.beginTransaction();
+
+    // Fetch voucher details & transactions to revert balances
+    const [[voucher]] = await conn.query(
+      `SELECT * FROM contra_vouchers WHERE id = ?`,
+      [id]
+    );
+
+    if (!voucher) {
+      conn.release();
+      return res.status(404).json({ success: false, message: "Voucher not found" });
+    }
+
+    const [transactions] = await conn.query(
+      `SELECT * FROM contra_transactions WHERE voucherId = ?`,
+      [id]
+    );
+
+    const companyId = voucher.companyId;
+
+    // Revert ledger balances
+    for (const t of transactions) {
+      const amount = parseFloat(t.amount) || 0;
+
+      // Add back to FROM ledger
+      await conn.query(
+        `UPDATE ledgers 
+         SET closingBalance = closingBalance + ?
+         WHERE id = ? AND companyId = ?`,
+        [amount, t.fromAccount, companyId]
+      );
+
+      // Subtract from TO ledger
+      await conn.query(
+        `UPDATE ledgers 
+         SET closingBalance = closingBalance - ?
+         WHERE id = ? AND companyId = ?`,
+        [amount, t.toAccount, companyId]
+      );
+    }
+
+    // Delete child transactions
+    await conn.query(
+      `DELETE FROM contra_transactions WHERE voucherId = ?`,
+      [id]
+    );
+
+    // Delete voucher
+    await conn.query(
+      `DELETE FROM contra_vouchers WHERE id = ?`,
+      [id]
+    );
+
+    await conn.commit();
+    res.status(200).json({
+      success: true,
+      message: "Contra Voucher deleted successfully and balances reverted",
+    });
+
+  } catch (error) {
+    await conn.rollback();
+    console.error("DELETE CONTRA ERROR:", error);
+    res.status(500).json({ success: false, message: "Internal Server Error", error });
+  } finally {
+    conn.release();
+  }
+};
+
+// UPDATE Contra Voucher
+export const updateContraVoucher = async (req, res) => {
+  const { id } = req.params;
+  const {
+    voucherNo,
+    date,
+    narration,
+    gstType,
+    gstRate,
+    transactions,
+    companyId
+  } = req.body;
+
+  if (!transactions || transactions.length === 0) {
+    return res.status(400).json({ success: false, message: "Transactions are required" });
+  }
+
+  const conn = await pool.getConnection();
+
+  try {
+    await conn.beginTransaction();
+
+    // 1️⃣ Fetch old voucher & transactions to revert old ledger balances
+    const [[oldVoucher]] = await conn.query(
+      `SELECT * FROM contra_vouchers WHERE id = ?`,
+      [id]
+    );
+
+    if (!oldVoucher) {
+      conn.release();
+      return res.status(404).json({ success: false, message: "Voucher not found" });
+    }
+
+    const [oldTransactions] = await conn.query(
+      `SELECT * FROM contra_transactions WHERE voucherId = ?`,
+      [id]
+    );
+
+    const activeCompanyId = companyId || oldVoucher.companyId;
+
+    // Revert old ledger balances
+    for (const oldT of oldTransactions) {
+      const amount = parseFloat(oldT.amount) || 0;
+
+      // Add back to FROM ledger
+      await conn.query(
+        `UPDATE ledgers 
+         SET closingBalance = closingBalance + ?
+         WHERE id = ? AND companyId = ?`,
+        [amount, oldT.fromAccount, activeCompanyId]
+      );
+
+      // Subtract from TO ledger
+      await conn.query(
+        `UPDATE ledgers 
+         SET closingBalance = closingBalance - ?
+         WHERE id = ? AND companyId = ?`,
+        [amount, oldT.toAccount, activeCompanyId]
+      );
+    }
+
+    // 2️⃣ Delete old transaction rows
+    await conn.query(
+      `DELETE FROM contra_transactions WHERE voucherId = ?`,
+      [id]
+    );
+
+    // 3️⃣ Compute new totals
+    const totalAmount = transactions.reduce(
+      (sum, t) => sum + (parseFloat(t.amount) || 0),
+      0
+    );
+
+    const gstAmount = (totalAmount * (gstRate || 0)) / 100;
+    const grandTotal = totalAmount + gstAmount;
+
+    // 4️⃣ Update header table
+    await conn.query(
+      `UPDATE contra_vouchers 
+       SET voucherNo = ?, date = ?, narration = ?, gstType = ?, gstRate = ?, gstAmount = ?, totalAmount = ?, grandTotal = ?
+       WHERE id = ?`,
+      [
+        voucherNo,
+        date,
+        narration,
+        gstType,
+        gstRate,
+        gstAmount,
+        totalAmount,
+        grandTotal,
+        id
+      ]
+    );
+
+    // 5️⃣ Insert new transactions and apply new balance updates
+    for (let t of transactions) {
+      // Insert row
+      await conn.query(
+        `INSERT INTO contra_transactions 
+           (voucherId, fromAccount, toAccount, amount, narration)
+         VALUES (?, ?, ?, ?, ?)`,
+        [id, t.fromAccount, t.toAccount, t.amount, t.narration]
+      );
+
+      const amount = parseFloat(t.amount) || 0;
+
+      // Reduce FROM ledger
+      await conn.query(
+        `UPDATE ledgers 
+         SET closingBalance = closingBalance - ?
+         WHERE id = ? AND companyId = ?`,
+        [amount, t.fromAccount, activeCompanyId]
+      );
+
+      // Increase TO ledger
+      await conn.query(
+        `UPDATE ledgers 
+         SET closingBalance = closingBalance + ?
+         WHERE id = ? AND companyId = ?`,
+        [amount, t.toAccount, activeCompanyId]
+      );
+    }
+
+    await conn.commit();
+
+    // Generate and save PDF on update
+    let pdfPath = "";
+    try {
+      const pdfTransactions = [];
+      for (let t of transactions) {
+        pdfTransactions.push({
+          fromAccountName: await getAccountName(t.fromAccount, activeCompanyId),
+          toAccountName: await getAccountName(t.toAccount, activeCompanyId),
+          amount: t.amount
+        });
+      }
+
+      const [companyRows] = await pool.query(`SELECT name FROM companies WHERE id = ?`, [activeCompanyId]);
+      let companyName = companyRows.length > 0 ? companyRows[0].name : "Cloudsat Private Limited";
+      if (!companyName || companyName === "Company Name" || companyName === "Ashwashana Private Limited") {
+        companyName = "Cloudsat Private Limited";
+      }
+
+      pdfPath = `uploads/contra/Contra_${voucherNo || id}_${Date.now()}.pdf`;
+
+      await generateContraVoucherPDF({ companyName, voucherNo: voucherNo || id, date, transactions: pdfTransactions, total: totalAmount, narration }, pdfPath);
+      await pool.query(`UPDATE contra_vouchers SET pdf_path = ? WHERE id = ?`, [pdfPath, id]);
+    } catch (pdfErr) {
+      console.error("Error generating PDF on update:", pdfErr);
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Contra Voucher Updated Successfully",
+      pdf_path: pdfPath,
+    });
+
+  } catch (error) {
+    await conn.rollback();
+    console.error("UPDATE CONTRA ERROR:", error);
+    res.status(500).json({ success: false, message: error.message });
+  } finally {
+    conn.release();
+  }
+};
+
+export const bulkCreateContraVoucher = async (req, res) => {
+  const { companyId, vouchers } = req.body;
+
+  const conn = await pool.getConnection();
+
+  try {
+    await conn.beginTransaction();
+
+    for (const voucher of vouchers) {
+      const {
+        voucherNo,
+        date,
+        narration,
+        gstType,
+        gstRate,
+        transactions,
+      } = voucher;
+
+      const totalAmount = transactions.reduce(
+        (sum, t) => sum + (parseFloat(t.amount) || 0),
+        0
+      );
+
+      const gstAmount = (totalAmount * (gstRate || 0)) / 100;
+      const grandTotal = totalAmount + gstAmount;
+
+      // Insert voucher header
+      const [voucherResult] = await conn.query(
+        `INSERT INTO contra_vouchers 
+          (companyId, voucherNo, date, narration, gstType, gstRate, gstAmount, totalAmount, grandTotal)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          companyId,
+          voucherNo,
+          date,
+          narration,
+          gstType,
+          gstRate,
+          gstAmount,
+          totalAmount,
+          grandTotal,
+        ]
+      );
+
+      const voucherId = voucherResult.insertId;
+
+      // Process each transaction
+      for (let t of transactions) {
+
+        // 1️⃣ INSERT transaction row
+        await conn.query(
+          `INSERT INTO contra_transactions 
+             (voucherId, fromAccount, toAccount, amount, narration)
+           VALUES (?, ?, ?, ?, ?)`,
+          [voucherId, t.fromAccount, t.toAccount, t.amount, t.narration]
+        );
+
+        // 2️⃣ UPDATE ledger balances
+
+        const amount = parseFloat(t.amount) || 0;
+
+        // Reduce FROM ledger closing balance
+        await conn.query(
+          `UPDATE ledgers 
+           SET closingBalance = closingBalance - ?
+           WHERE id = ? AND companyId = ?`,
+          [amount, t.fromAccount, companyId]
+        );
+
+        // Increase TO ledger closing balance
+        await conn.query(
+          `UPDATE ledgers 
+           SET closingBalance = closingBalance + ?
+           WHERE id = ? AND companyId = ?`,
+          [amount, t.toAccount, companyId]
+        );
+      }
+    }
+
+    await conn.commit();
+    res.status(201).json({
+      success: true,
+      message: "Bulk Contra Vouchers Created Successfully",
+    });
+
+  } catch (error) {
+    await conn.rollback();
+    console.error("BULK CONTRA ERROR:", error);
+    res.status(500).json({ success: false, message: error.message });
+  } finally {
+    conn.release();
+  }
+};
+
+
+export const downloadContraVoucherPDF = async (req, res) => {
+  const { id } = req.params;
+  try {
+    const [[voucher]] = await pool.query(`SELECT * FROM contra_vouchers WHERE id = ?`, [id]);
+    if (!voucher) return res.status(404).json({ message: "Voucher not found" });
+
+    // ALWAYS regenerate the PDF to ensure correct layout and company branding
+    const [transactions] = await pool.query(`SELECT * FROM contra_transactions WHERE voucherId = ?`, [id]);
+    const pdfTransactions = [];
+    for (let t of transactions) {
+      pdfTransactions.push({
+        fromAccountName: await getAccountName(t.fromAccount, voucher.companyId),
+        toAccountName: await getAccountName(t.toAccount, voucher.companyId),
+        amount: t.amount
+      });
+    }
+
+    const [companyRows] = await pool.query(`SELECT name FROM companies WHERE id = ?`, [voucher.companyId]);
+    let companyName = companyRows.length > 0 ? companyRows[0].name : "Cloudsat Private Limited";
+    if (!companyName || companyName === "Company Name" || companyName === "Ashwashana Private Limited") {
+      companyName = "Cloudsat Private Limited";
+    }
+
+    const pdfPath = `uploads/contra/Contra_${voucher.voucherNo || id}_${Date.now()}.pdf`;
+
+    await generateContraVoucherPDF({ companyName, voucherNo: voucher.voucherNo || id, date: voucher.date, transactions: pdfTransactions, total: voucher.totalAmount, narration: voucher.narration }, pdfPath);
+    await pool.query(`UPDATE contra_vouchers SET pdf_path = ? WHERE id = ?`, [pdfPath, id]);
+
+    res.download(path.join(process.cwd(), pdfPath));
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Error generating PDF" });
+  }
+};
