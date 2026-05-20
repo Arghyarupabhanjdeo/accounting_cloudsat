@@ -1,19 +1,17 @@
 import express from "express";
 import {
-  getGstr2BEntries,
-  createGstr2BEntry,
-  deleteGstr2BEntry,
-  getGstr2BSummary
+  getGSTR2B,
+  getGSTR2BSummary,
+  getGSTR2BSupplierWise,
+  getGSTR2BHSN,
 } from "../controllers/gstr2bController.js";
 
 const router = express.Router();
 
-/* Entries */
-router.get("/:companyId", getGstr2BEntries);
-router.post("/:companyId", createGstr2BEntry);
-router.delete("/:id", deleteGstr2BEntry);
-
-/* Return View */
-router.get("/summary/view/:companyId", getGstr2BSummary);
+// Define more specific sub-paths first to prevent parameter routing conflict
+router.get("/summary/:companyId",   getGSTR2BSummary);
+router.get("/supplier/:companyId",  getGSTR2BSupplierWise);
+router.get("/hsn/:companyId",       getGSTR2BHSN);
+router.get("/:companyId",           getGSTR2B);
 
 export default router;

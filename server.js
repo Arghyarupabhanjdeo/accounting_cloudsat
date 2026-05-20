@@ -28,6 +28,7 @@ import bankTransactions from "./routes/bankTransactionRoutes.js";
 import checkRoutes from "./routes/chequeRoutes.js";
 import gstr2aRoutes from "./routes/gstr2aRoutes.js";
 import gstr2bRoutes from "./routes/gstr2bRoutes.js";
+
 import invoiceRoutes from "./routes/invoiceRoutes.js";
 import challanRoutes from "./routes/challanRoutes.js";
 // import subscriptionRoutes from "./routes/subscriptionRoutes.js";
@@ -76,7 +77,7 @@ app.use("/api/v1/bank-transaction", bankTransactions);
 app.use('/api/v1/cheque', checkRoutes);
 app.use("/api/v1/gstr1", gstr1Routes);
 app.use("/api/v1/gstr2a", gstr2aRoutes);
-app.use("/api/gstr2b", gstr2bRoutes);
+app.use("/api/v1/gstr2b", gstr2bRoutes);
 app.use("/api/v1/invoice", invoiceRoutes);
 app.use("/api/v1/challans ", challanRoutes);
 // app.use("/api/v1/subscription", subscriptionRoutes);
