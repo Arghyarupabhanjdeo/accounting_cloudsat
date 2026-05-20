@@ -48,7 +48,7 @@ export const generateNotePDF = async (data, type, fileName, subDir) => {
             }
 
             const filePath = path.join(uploadDir, fileName);
-            const doc = new PDFDocument({ size: "A4", margin: 30 });
+            const doc = new PDFDocument({ size: "A4", margin: 30, bufferPages: true });
             const stream = fs.createWriteStream(filePath);
             doc.pipe(stream);
 
@@ -59,8 +59,17 @@ export const generateNotePDF = async (data, type, fileName, subDir) => {
             const COL_LEFT_DIVIDER = MARGIN + (CONTENT_WIDTH * 0.5);
             const RIGHT_INNER_DIVIDER_OFFSET = CONTENT_WIDTH * 0.25;
 
+            const valueOrDash = (value) => {
+                if (value === undefined || value === null || value === "") return "-";
+                return String(value);
+            };
+
             const formatCurrency = (amount) => {
                 return "Rs. " + Number(amount || 0).toFixed(2);
+            };
+
+            const formatNumber = (amount) => {
+                return Number(amount || 0).toFixed(2);
             };
 
             const formatDate = (dateStr) => {
@@ -106,7 +115,7 @@ export const generateNotePDF = async (data, type, fileName, subDir) => {
             const headerStartY = y;
             const logisticsRowHeight = 39;
             const logisticsRows = 8;
-            const headerHeight = logisticsRowHeight * logisticsRows; // 312
+            const headerHeight = logisticsRowHeight * logisticsRows;
 
             doc.lineWidth(1).strokeColor("#000000").rect(MARGIN, headerStartY, CONTENT_WIDTH, headerHeight).stroke();
             doc.moveTo(COL_LEFT_DIVIDER, headerStartY).lineTo(COL_LEFT_DIVIDER, headerStartY + headerHeight).stroke();
@@ -126,22 +135,22 @@ export const generateNotePDF = async (data, type, fileName, subDir) => {
             // 1. SENDER / COMPANY DETAILS (Top-Left Box)
             // ----------------------------------------------------
             let companyY = headerStartY + 5;
-            doc.fontSize(9).font("Helvetica-Bold").text(data.sender.company_name || "Cloudsat Private Limited", MARGIN + 5, companyY, { width: (CONTENT_WIDTH * 0.5) - 10 });
+            doc.fontSize(8).font("Helvetica-Bold").text(data.sender?.company_name || "Cloudsat Private Limited", MARGIN + 5, companyY, { width: (CONTENT_WIDTH * 0.5) - 10 });
             companyY = doc.y + 3;
 
-            doc.fontSize(8).font("Helvetica").text(data.sender.address || "", MARGIN + 5, companyY, { width: (CONTENT_WIDTH * 0.5) - 10 });
+            doc.fontSize(7).font("Helvetica").text(data.sender?.address || "", MARGIN + 5, companyY, { width: (CONTENT_WIDTH * 0.5) - 10 });
             companyY = doc.y + 4;
 
-            if (data.sender.gst) {
-                doc.fontSize(8).font("Helvetica-Bold").text("GSTIN/UIN: ", MARGIN + 5, companyY, { continued: true });
+            if (data.sender?.gst) {
+                doc.fontSize(7).font("Helvetica-Bold").text("GSTIN/UIN: ", MARGIN + 5, companyY, { continued: true });
                 doc.font("Helvetica").text(data.sender.gst);
                 companyY = doc.y + 2;
             }
 
-            const senderState = data.sender.state || "";
-            const senderStateCode = getStateCode(data.sender.gst);
+            const senderState = data.sender?.state || "";
+            const senderStateCode = getStateCode(data.sender?.gst);
             if (senderState) {
-                doc.fontSize(8).font("Helvetica-Bold").text("State Name : ", MARGIN + 5, companyY, { continued: true });
+                doc.fontSize(7).font("Helvetica-Bold").text("State Name : ", MARGIN + 5, companyY, { continued: true });
                 doc.font("Helvetica").text(senderState + (senderStateCode ? `, Code : ${senderStateCode}` : ""));
             }
 
@@ -149,32 +158,32 @@ export const generateNotePDF = async (data, type, fileName, subDir) => {
             // 2. CONSIGNEE DETAILS (Middle-Left Box)
             // ----------------------------------------------------
             let consigneeY = consigneeStartY + 5;
-            doc.fontSize(8).font("Helvetica").text("Consignee (Ship to):", MARGIN + 5, consigneeY);
+            doc.fontSize(7).font("Helvetica").text("Consignee (Ship to):", MARGIN + 5, consigneeY);
             consigneeY = doc.y + 2;
 
-            const consigneeName = data.dispatchDetails.consigneeSameAsBilling ? data.partyDetails.mailingName : data.dispatchDetails.consigneeName;
+            const consigneeName = data.dispatchDetails?.consigneeSameAsBilling ? data.partyDetails?.mailingName : data.dispatchDetails?.consigneeName;
             if (consigneeName) {
-                doc.fontSize(9).font("Helvetica-Bold").text(consigneeName, MARGIN + 5, consigneeY, { width: (CONTENT_WIDTH * 0.5) - 10 });
+                doc.fontSize(8).font("Helvetica-Bold").text(consigneeName, MARGIN + 5, consigneeY, { width: (CONTENT_WIDTH * 0.5) - 10 });
                 consigneeY = doc.y + 3;
             }
 
-            const consigneeAddress = data.dispatchDetails.consigneeSameAsBilling ? data.partyDetails.address : data.dispatchDetails.consigneeAddress;
+            const consigneeAddress = data.dispatchDetails?.consigneeSameAsBilling ? data.partyDetails?.address : data.dispatchDetails?.consigneeAddress;
             if (consigneeAddress) {
-                doc.fontSize(8).font("Helvetica").text(consigneeAddress, MARGIN + 5, consigneeY, { width: (CONTENT_WIDTH * 0.5) - 10 });
+                doc.fontSize(7).font("Helvetica").text(consigneeAddress, MARGIN + 5, consigneeY, { width: (CONTENT_WIDTH * 0.5) - 10 });
                 consigneeY = doc.y + 4;
             }
 
-            const consigneeGSTIN = data.dispatchDetails.consigneeSameAsBilling ? data.partyDetails.gstin : data.dispatchDetails.consigneeGSTIN;
+            const consigneeGSTIN = data.dispatchDetails?.consigneeSameAsBilling ? data.partyDetails?.gstin : data.dispatchDetails?.consigneeGSTIN;
             if (consigneeGSTIN) {
-                doc.fontSize(8).font("Helvetica-Bold").text("GSTIN/UIN: ", MARGIN + 5, consigneeY, { continued: true });
+                doc.fontSize(7).font("Helvetica-Bold").text("GSTIN/UIN: ", MARGIN + 5, consigneeY, { continued: true });
                 doc.font("Helvetica").text(consigneeGSTIN);
                 consigneeY = doc.y + 2;
             }
 
-            const consigneeState = data.dispatchDetails.consigneeSameAsBilling ? data.partyDetails.state : data.dispatchDetails.consigneeState;
+            const consigneeState = data.dispatchDetails?.consigneeSameAsBilling ? data.partyDetails?.state : data.dispatchDetails?.consigneeState;
             const consigneeStateCode = getStateCode(consigneeGSTIN);
             if (consigneeState) {
-                doc.fontSize(8).font("Helvetica-Bold").text("State Name : ", MARGIN + 5, consigneeY, { continued: true });
+                doc.fontSize(7).font("Helvetica-Bold").text("State Name : ", MARGIN + 5, consigneeY, { continued: true });
                 doc.font("Helvetica").text(consigneeState + (consigneeStateCode ? `, Code : ${consigneeStateCode}` : ""));
             }
 
@@ -182,29 +191,29 @@ export const generateNotePDF = async (data, type, fileName, subDir) => {
             // 3. BUYER DETAILS (Bottom-Left Box)
             // ----------------------------------------------------
             let buyerY = buyerStartY + 5;
-            doc.fontSize(8).font("Helvetica").text("Buyer (Bill to):", MARGIN + 5, buyerY);
+            doc.fontSize(7).font("Helvetica").text("Buyer (Bill to):", MARGIN + 5, buyerY);
             buyerY = doc.y + 2;
 
-            if (data.partyDetails.mailingName) {
-                doc.fontSize(9).font("Helvetica-Bold").text(data.partyDetails.mailingName, MARGIN + 5, buyerY, { width: (CONTENT_WIDTH * 0.5) - 10 });
+            if (data.partyDetails?.mailingName) {
+                doc.fontSize(8).font("Helvetica-Bold").text(data.partyDetails.mailingName, MARGIN + 5, buyerY, { width: (CONTENT_WIDTH * 0.5) - 10 });
                 buyerY = doc.y + 3;
             }
 
-            if (data.partyDetails.address) {
-                doc.fontSize(8).font("Helvetica").text(data.partyDetails.address, MARGIN + 5, buyerY, { width: (CONTENT_WIDTH * 0.5) - 10 });
+            if (data.partyDetails?.address) {
+                doc.fontSize(7).font("Helvetica").text(data.partyDetails.address, MARGIN + 5, buyerY, { width: (CONTENT_WIDTH * 0.5) - 10 });
                 buyerY = doc.y + 4;
             }
 
-            if (data.partyDetails.gstin) {
-                doc.fontSize(8).font("Helvetica-Bold").text("GSTIN/UIN: ", MARGIN + 5, buyerY, { continued: true });
+            if (data.partyDetails?.gstin) {
+                doc.fontSize(7).font("Helvetica-Bold").text("GSTIN/UIN: ", MARGIN + 5, buyerY, { continued: true });
                 doc.font("Helvetica").text(data.partyDetails.gstin);
                 buyerY = doc.y + 2;
             }
 
-            const buyerState = data.partyDetails.state || "";
-            const buyerStateCode = getStateCode(data.partyDetails.gstin);
+            const buyerState = data.partyDetails?.state || "";
+            const buyerStateCode = getStateCode(data.partyDetails?.gstin);
             if (buyerState) {
-                doc.fontSize(8).font("Helvetica-Bold").text("State Name : ", MARGIN + 5, buyerY, { continued: true });
+                doc.fontSize(7).font("Helvetica-Bold").text("State Name : ", MARGIN + 5, buyerY, { continued: true });
                 doc.font("Helvetica").text(buyerState + (buyerStateCode ? `, Code : ${buyerStateCode}` : ""));
             }
 
@@ -214,24 +223,24 @@ export const generateNotePDF = async (data, type, fileName, subDir) => {
                 const innerDivX = COL_LEFT_DIVIDER + RIGHT_INNER_DIVIDER_OFFSET;
                 doc.moveTo(COL_LEFT_DIVIDER, currentRightY + height).lineTo(MARGIN + CONTENT_WIDTH, currentRightY + height).stroke();
                 if (label2 !== null) doc.moveTo(innerDivX, currentRightY).lineTo(innerDivX, currentRightY + height).stroke();
-                doc.fontSize(8).font("Helvetica").text(label1, COL_LEFT_DIVIDER + 3, currentRightY + 3, { width: RIGHT_INNER_DIVIDER_OFFSET - 5 });
-                doc.fontSize(8).font("Helvetica-Bold").text(value1 || "-", COL_LEFT_DIVIDER + 3, currentRightY + 13, { width: RIGHT_INNER_DIVIDER_OFFSET - 5 });
+                doc.fontSize(7).font("Helvetica").text(label1, COL_LEFT_DIVIDER + 3, currentRightY + 3, { width: RIGHT_INNER_DIVIDER_OFFSET - 5 });
+                doc.fontSize(7).font("Helvetica-Bold").text(valueOrDash(value1), COL_LEFT_DIVIDER + 3, currentRightY + 13, { width: RIGHT_INNER_DIVIDER_OFFSET - 5 });
                 if (label2 !== null) {
-                    doc.fontSize(8).font("Helvetica").text(label2 || "", innerDivX + 3, currentRightY + 3, { width: RIGHT_INNER_DIVIDER_OFFSET - 5 });
-                    doc.fontSize(8).font("Helvetica-Bold").text(value2 || "-", innerDivX + 3, currentRightY + 13, { width: RIGHT_INNER_DIVIDER_OFFSET - 5 });
+                    doc.fontSize(7).font("Helvetica").text(label2 || "", innerDivX + 3, currentRightY + 3, { width: RIGHT_INNER_DIVIDER_OFFSET - 5 });
+                    doc.fontSize(7).font("Helvetica-Bold").text(valueOrDash(value2), innerDivX + 3, currentRightY + 13, { width: RIGHT_INNER_DIVIDER_OFFSET - 5 });
                 }
                 currentRightY += height;
             };
 
             drawLogisticsRow("Note No.", data.voucherNo, "Dated", formatDate(data.date));
-            drawLogisticsRow("Original Invoice No.", data.dispatchDetails.originalInvoiceNo || "-", "Original Invoice Date", formatDate(data.dispatchDetails.originalInvoiceDate));
-            drawLogisticsRow("Reference No.", data.dispatchDetails.referenceNo || "-", "Reference Date", formatDate(data.dispatchDetails.referenceDate));
-            drawLogisticsRow("Other References", data.dispatchDetails.otherReferences || "-", "Destination", data.dispatchDetails.destination || "-");
-            drawLogisticsRow("Buyer Order No.", data.dispatchDetails.buyerOrderNo || "-", "Dated", formatDate(data.dispatchDetails.buyerOrderDate));
-            drawLogisticsRow("Dispatch Doc No.", data.dispatchDetails.dispatchDocNo || "-", "Dispatched through", data.dispatchDetails.dispatchedThrough || "-");
+            drawLogisticsRow("Original Invoice No.", data.dispatchDetails?.originalInvoiceNo, "Original Invoice Date", formatDate(data.dispatchDetails?.originalInvoiceDate));
+            drawLogisticsRow("Reference No.", data.dispatchDetails?.referenceNo, "Reference Date", formatDate(data.dispatchDetails?.referenceDate));
+            drawLogisticsRow("Other References", data.dispatchDetails?.otherReferences, "Destination", data.dispatchDetails?.destination);
+            drawLogisticsRow("Buyer Order No.", data.dispatchDetails?.buyerOrderNo, "Dated", formatDate(data.dispatchDetails?.buyerOrderDate));
+            drawLogisticsRow("Dispatch Doc No.", data.dispatchDetails?.dispatchDocNo, "Dispatched through", data.dispatchDetails?.dispatchedThrough);
 
-            doc.fontSize(8).font("Helvetica").text("Terms of Delivery", COL_LEFT_DIVIDER + 3, currentRightY + 3);
-            doc.fontSize(8).font("Helvetica-Bold").text(data.dispatchDetails.termsOfDelivery || "-", COL_LEFT_DIVIDER + 3, currentRightY + 13, { width: (CONTENT_WIDTH * 0.5) - 8 });
+            doc.fontSize(7).font("Helvetica").text("Terms of Delivery", COL_LEFT_DIVIDER + 3, currentRightY + 3);
+            doc.fontSize(7).font("Helvetica-Bold").text(valueOrDash(data.dispatchDetails?.termsOfDelivery), COL_LEFT_DIVIDER + 3, currentRightY + 13, { width: (CONTENT_WIDTH * 0.5) - 8 });
             currentRightY = headerStartY + headerHeight;
 
             y = headerStartY + headerHeight;
@@ -251,8 +260,8 @@ export const generateNotePDF = async (data, type, fileName, subDir) => {
             const drawTableHeader = (yPos) => {
                 doc.rect(MARGIN, yPos, CONTENT_WIDTH, 20).stroke();
                 [colDesc, colHSN, colQty, colRate, colPer, colDisc, colAmount].forEach(x => doc.moveTo(x, yPos).lineTo(x, yPos + 20).stroke());
-                doc.fontSize(8).font("Helvetica-Bold");
-                doc.text("SI", colSI + 2, yPos + 6);
+                doc.fontSize(7).font("Helvetica-Bold");
+                doc.text("Sl", colSI + 2, yPos + 6);
                 doc.text("Description of Goods", colDesc + 4, yPos + 6);
                 doc.text("HSN/SAC", colHSN + 2, yPos + 6, { width: colQty - colHSN - 4, align: 'center' });
                 doc.text("Quantity", colQty + 2, yPos + 6, { width: colRate - colQty - 4, align: 'center' });
@@ -272,7 +281,7 @@ export const generateNotePDF = async (data, type, fileName, subDir) => {
             let currentTableTop = y;
             let currentItemY = drawTableHeader(currentTableTop);
 
-            data.items.forEach((item, i) => {
+            (data.items || []).forEach((item, i) => {
                 const rowHeight = 20;
                 if (currentItemY + rowHeight > 760) {
                     drawVerticalLines(currentTableTop, currentItemY);
@@ -283,14 +292,14 @@ export const generateNotePDF = async (data, type, fileName, subDir) => {
                     currentItemY = drawTableHeader(currentTableTop);
                 }
                 const rowStartY = currentItemY;
-                doc.fontSize(9).font("Helvetica").text(`${i + 1}`, colSI + 2, rowStartY + 5, { width: colDesc - colSI - 4, align: 'center' });
+                doc.fontSize(8).font("Helvetica").text(`${i + 1}`, colSI + 2, rowStartY + 5, { width: colDesc - colSI - 4, align: 'center' });
                 doc.font("Helvetica-Bold").text(item.itemName || "-", colDesc + 4, rowStartY + 5, { width: colHSN - colDesc - 8 });
-                doc.fontSize(9).font("Helvetica").text(item.hsn_code || "-", colHSN + 2, rowStartY + 5, { width: colQty - colHSN - 4, align: 'center' });
-                doc.font("Helvetica-Bold").text(`${item.qty}`, colQty + 2, rowStartY + 5, { width: colRate - colQty - 4, align: 'center' });
-                doc.text(Number(item.rate || 0).toFixed(2), colRate + 2, rowStartY + 5, { width: colPer - colRate - 4, align: 'right' });
+                doc.fontSize(8).font("Helvetica").text(item.hsn_code || "-", colHSN + 2, rowStartY + 5, { width: colQty - colHSN - 4, align: 'center' });
+                doc.font("Helvetica-Bold").text(formatNumber(item.qty), colQty + 2, rowStartY + 5, { width: colRate - colQty - 4, align: 'center' });
+                doc.text(formatNumber(item.rate), colRate + 2, rowStartY + 5, { width: colPer - colRate - 4, align: 'right' });
                 doc.font("Helvetica").text(item.per || '', colPer + 2, rowStartY + 5, { width: colDisc - colPer - 4, align: 'center' });
-                doc.text(item.discount + "%", colDisc + 2, rowStartY + 5, { width: colAmount - colDisc - 4, align: 'center' });
-                doc.font("Helvetica-Bold").text(Number(item.amount || 0).toFixed(2), colAmount + 2, rowStartY + 5, { width: MARGIN + CONTENT_WIDTH - colAmount - 4, align: 'right' });
+                doc.text(formatNumber(item.discount) + "%", colDisc + 2, rowStartY + 5, { width: colAmount - colDisc - 4, align: 'center' });
+                doc.font("Helvetica-Bold").text(formatNumber(item.amount), colAmount + 2, rowStartY + 5, { width: MARGIN + CONTENT_WIDTH - colAmount - 4, align: 'right' });
                 doc.moveTo(MARGIN, rowStartY + rowHeight).lineTo(MARGIN + CONTENT_WIDTH, rowStartY + rowHeight).stroke();
                 currentItemY += rowHeight;
             });
@@ -308,9 +317,9 @@ export const generateNotePDF = async (data, type, fileName, subDir) => {
             // GST lines
             let gstTextY = currentItemY + 5;
             const adjs = [];
-            if (data.igst_amount > 0) adjs.push({ label: `OUTPUT IGST @ ${data.igst_rate}%`, val: data.igst_amount });
-            if (data.cgst_amount > 0) adjs.push({ label: `OUTPUT CGST @ ${data.cgst_rate}%`, val: data.cgst_amount });
-            if (data.sgst_amount > 0) adjs.push({ label: `OUTPUT SGST @ ${data.sgst_rate}%`, val: data.sgst_amount });
+            if (Number(data.igst_amount || 0) > 0) adjs.push({ label: `OUTPUT IGST @ ${data.igst_rate}%`, val: data.igst_amount });
+            if (Number(data.cgst_amount || 0) > 0) adjs.push({ label: `OUTPUT CGST @ ${data.cgst_rate}%`, val: data.cgst_amount });
+            if (Number(data.sgst_amount || 0) > 0) adjs.push({ label: `OUTPUT SGST @ ${data.sgst_rate}%`, val: data.sgst_amount });
             
             doc.fontSize(9).font("Helvetica-Bold");
             adjs.forEach(adj => {
@@ -328,7 +337,7 @@ export const generateNotePDF = async (data, type, fileName, subDir) => {
             doc.rect(MARGIN, currentItemY, CONTENT_WIDTH, 20).stroke();
             [colDesc, colHSN, colQty, colRate, colPer, colDisc, colAmount].forEach(x => doc.moveTo(x, currentItemY).lineTo(x, currentItemY + 20).stroke());
             doc.fontSize(9).font("Helvetica-Bold").text("Total", colDesc + 4, currentItemY + 5);
-            const totalQty = data.items.reduce((sum, item) => sum + Number(item.qty || 0), 0);
+            const totalQty = (data.items || []).reduce((sum, item) => sum + Number(item.qty || 0), 0);
             doc.text(`${totalQty}`, colQty + 2, currentItemY + 5, { width: colRate - colQty - 4, align: 'center' });
             doc.text(formatCurrency(data.grand_total), colAmount + 2, currentItemY + 5, { width: MARGIN + CONTENT_WIDTH - colAmount - 10, align: 'right' });
             y = currentItemY + 20;
@@ -341,13 +350,13 @@ export const generateNotePDF = async (data, type, fileName, subDir) => {
 
             // GST Table
             const hsnGroups = {};
-            data.items.forEach(item => {
-                const hsn = item.hsnno || "N/A";
+            (data.items || []).forEach(item => {
+                const hsn = item.hsn_code || "N/A";
                 if (!hsnGroups[hsn]) hsnGroups[hsn] = { taxable: 0 };
                 hsnGroups[hsn].taxable += Number(item.amount || 0);
             });
             const hsnEntries = Object.entries(hsnGroups);
-            const gstTableH = 30 + (hsnEntries.length * 18) + 18;
+            const gstTableH = 30 + (Math.max(hsnEntries.length, 1) * 18);
             if (y + gstTableH > 720) { doc.addPage(); y = MARGIN; }
             doc.rect(MARGIN, y, CONTENT_WIDTH, gstTableH).stroke();
             const gstX = [MARGIN, MARGIN + 80, MARGIN + 160, MARGIN + 215, MARGIN + 280, MARGIN + 335, MARGIN + 400];
@@ -375,12 +384,13 @@ export const generateNotePDF = async (data, type, fileName, subDir) => {
                 doc.text("Rate", gstX[4] + 2, y + 16, { width: 55, align: 'center' });
                 doc.text("Amount", gstX[5] + 2, y + 16, { width: 65, align: 'center' });
             }
-            doc.text("Total Tax Amount", gstX[6] + 2, y + 10, { width: CONTENT_WIDTH - 400 - MARGIN, align: 'center' });
+            doc.text("Total Tax Amount", gstX[6] + 2, y + 10, { width: MARGIN + CONTENT_WIDTH - gstX[6] - 4, align: 'center' });
 
             let gstRowY = y + 30;
             let totalTaxSum = 0;
-            hsnEntries.forEach(([hsn, group]) => {
-                let rowTax = data.igst_amount > 0 ? (group.taxable * data.igst_rate / 100) : (group.taxable * (data.cgst_rate + data.sgst_rate) / 100);
+            const gstRows = hsnEntries.length > 0 ? hsnEntries : [["N/A", { taxable: 0 }]];
+            gstRows.forEach(([hsn, group]) => {
+                let rowTax = Number(data.igst_amount || 0) > 0 ? (group.taxable * data.igst_rate / 100) : (group.taxable * (Number(data.cgst_rate || 0) + Number(data.sgst_rate || 0)) / 100);
                 totalTaxSum += rowTax;
                 doc.fontSize(8).font("Helvetica").text(hsn, gstX[0] + 2, gstRowY + 4, { width: 76, align: 'center' });
                 doc.text(group.taxable.toFixed(2), gstX[1] + 2, gstRowY + 4, { width: 70, align: 'right' });
@@ -397,20 +407,20 @@ export const generateNotePDF = async (data, type, fileName, subDir) => {
                 gstRowY += 18;
                 doc.moveTo(MARGIN, gstRowY).lineTo(MARGIN + CONTENT_WIDTH, gstRowY).stroke();
             });
-            y = gstRowY + 20;
+            y = gstRowY + 8;
 
             // Narration
             if (y + 30 > 720) { doc.addPage(); y = MARGIN; }
-            doc.fontSize(8).font("Helvetica-Bold").text("Narration: " + (data.narration || "-"), MARGIN, y);
+            doc.fontSize(7).font("Helvetica-Bold").text("Narration: " + (data.narration || "-"), MARGIN, y);
             y += 20;
 
             // Footer
             const footerY = doc.page.height - 110;
             doc.rect(MARGIN, footerY, CONTENT_WIDTH, 80).stroke();
             doc.moveTo(MARGIN + (CONTENT_WIDTH * 0.6), footerY).lineTo(MARGIN + (CONTENT_WIDTH * 0.6), footerY + 80).stroke();
-            doc.fontSize(8).font("Helvetica").text("Declaration:", MARGIN + 5, footerY + 5);
+            doc.fontSize(7).font("Helvetica").text("Declaration:", MARGIN + 5, footerY + 5);
             doc.text("We declare that this note shows the actual price of the goods described and that all particulars are true and correct.", MARGIN + 5, footerY + 15, { width: CONTENT_WIDTH * 0.55 });
-            doc.fontSize(9).font("Helvetica-Bold").text("For " + (data.sender.company_name || "Cloudsat Private Limited"), MARGIN + (CONTENT_WIDTH * 0.6) + 5, footerY + 5, { width: CONTENT_WIDTH * 0.38, align: 'right' });
+            doc.fontSize(8).font("Helvetica-Bold").text("For " + (data.sender?.company_name || "Cloudsat Private Limited"), MARGIN + (CONTENT_WIDTH * 0.6) + 5, footerY + 5, { width: CONTENT_WIDTH * 0.38, align: 'right' });
             doc.text("Authorised Signatory", MARGIN + (CONTENT_WIDTH * 0.6) + 5, footerY + 65, { width: CONTENT_WIDTH * 0.38, align: 'right' });
 
             doc.end();

@@ -16,7 +16,8 @@ import dayBookRoute from "./routes/dayBookRoutes.js";
 import balanceSheetRoutes from "./routes/balanceSheetRoutes.js"
 import transactionRoutes from "./routes/transactionRoutes.js"
 import profitLossRoutes from "./routes/profitLossRoutes.js";
-import authRoutes from "./routes/userRoutes.js";
+import userRoutes from "./routes/userRoutes.js";
+import gstr1Routes from "./routes/gstr1Routes.js"
 import voucherRoutes from "./routes/voucherRoutes.js";
 import noteRoutes from "./routes/noteRoutes.js";
 import manufacturingRoutes from "./routes/manufacturingRoute.js";
@@ -35,7 +36,7 @@ import { initSubscriptionCron } from "./utils/subscriptionCron.js";
 const app = express();
 
 
-const allowOrigins = ["http://localhost:5173", "http://localhost:5174", "https://accounting.csaap.com", "https://buildererp.csaap.com", "https://cloudsat.in/", "https://www.cloudsat.in/"];
+const allowOrigins = ["http://localhost:5173", "http://localhost:5174", "https://accounting.csaap.com", "https://buildererp.csaap.com", "https://cloudsat.in/", "https://www.cloudsat.in/,"];
 
 app.use(
   cors({
@@ -65,7 +66,7 @@ app.use("/api/v1/daybook", dayBookRoute);
 app.use("/api/v1/balanceSheet", balanceSheetRoutes);
 app.use("/api/v1/transaction", transactionRoutes);
 app.use("/api", profitLossRoutes);
-app.use("/api/v1/auth", authRoutes);
+app.use("/api/v1/auth", userRoutes);
 app.use("/api/v1/voucher", voucherRoutes)
 app.use("/api/v1/notes", noteRoutes)
 app.use("/api/v1/manufacturing", manufacturingRoutes);
@@ -73,6 +74,7 @@ app.use("/api/v1/stock", stockRoutes);
 app.use("/api/v1/bank", bankRoutes);
 app.use("/api/v1/bank-transaction", bankTransactions);
 app.use('/api/v1/cheque', checkRoutes);
+app.use("/api/v1/gstr1", gstr1Routes);
 app.use("/api/v1/gstr2a", gstr2aRoutes);
 app.use("/api/gstr2b", gstr2bRoutes);
 app.use("/api/v1/invoice", invoiceRoutes);
