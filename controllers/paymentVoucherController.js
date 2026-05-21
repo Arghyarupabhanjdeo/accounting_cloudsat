@@ -2,6 +2,7 @@ import pool from "../db.js";
 import fs from "fs";
 import path from "path";
 import { generatePaymentPDF } from "../utils/paymentPdfUtils.js";
+import { ensureCreatorColumns, getCreatorFromRequest } from "../utils/creatorTracking.js";
 
 const getAccountName = async (ledgerId, companyId) => {
   if (!ledgerId) return "N/A";
@@ -81,6 +82,7 @@ const getAccountName = async (ledgerId, companyId) => {
 
 export const createPaymentVoucher = async (req, res) => {
   const { companyId } = req.params;
+  const creator = getCreatorFromRequest(req);
 
   const {
     voucherNo,
@@ -99,6 +101,7 @@ export const createPaymentVoucher = async (req, res) => {
 
   try {
     await conn.beginTransaction();
+    await ensureCreatorColumns(conn, "payment_vouchers");
 
     // Insert each item and update ledger closing balance
     for (let item of items) {
@@ -133,6 +136,10 @@ export const createPaymentVoucher = async (req, res) => {
         [amount, ledgerId, companyId]
       );
     }
+    await conn.query(
+      `UPDATE payment_vouchers SET created_by_user_id = ?, created_by_employee_id = ? WHERE companyId = ? AND voucherNo = ?`,
+      [creator.userId, creator.employeeId, companyId, voucherNo]
+    );
 
     await conn.commit();
 

@@ -3,8 +3,10 @@ import path from "path";
 // import { generatePDF } from "../utils/pdfUtils.js";
 import { generateDocumentPDF } from "../utils/format.js";
 import { logAction } from "./auditLogController.js";
+import { ensureCreatorColumns, getCreatorFromRequest } from "../utils/creatorTracking.js";
 
 export const createSalesVoucher = async (req, res) => {
+  const creator = getCreatorFromRequest(req);
   const {
     companyId,
     date,
@@ -64,6 +66,7 @@ export const createSalesVoucher = async (req, res) => {
   await connection.beginTransaction();
 
   try {
+    await ensureCreatorColumns(connection, "sales_vouchers");
     /* ================= SENDER/COMPANY INFO ================= */
     const [companyRows] = await connection.query(
       `SELECT name, address, pinCode, gstin, state, email, mobile FROM companies WHERE id = ?`,
@@ -191,6 +194,10 @@ export const createSalesVoucher = async (req, res) => {
     ]);
 
     const voucherId = voucherResult.insertId;
+    await connection.query(
+      `UPDATE sales_vouchers SET created_by_user_id = ?, created_by_employee_id = ? WHERE id = ?`,
+      [creator.userId, creator.employeeId, voucherId]
+    );
 
     /* ================= SALES ITEMS INSERT ================= */
     const insertItemQuery = `

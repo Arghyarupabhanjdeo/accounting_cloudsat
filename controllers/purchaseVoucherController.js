@@ -4,14 +4,17 @@ import path from "path";
 import fs from "fs";
 import { generateDocumentPDF } from "../utils/format.js";
 import { logAction } from "./auditLogController.js";
+import { ensureCreatorColumns, getCreatorFromRequest } from "../utils/creatorTracking.js";
 
 // 🔵 CREATE PURCHASE VOUCHER
 export const createPurchaseVoucher = async (req, res) => {
   const { companyId } = req.body;
+  const creator = getCreatorFromRequest(req);
   const conn = await pool.getConnection();
 
   try {
     await conn.beginTransaction();
+    await ensureCreatorColumns(conn, "purchase_vouchers");
 
     const {
       date,
@@ -135,9 +138,11 @@ export const createPurchaseVoucher = async (req, res) => {
       sgst_rate || 0,
       carrierName || null
     ]);
-
     const voucherId = voucherResult.insertId;
-
+    await conn.query(
+      `UPDATE purchase_vouchers SET created_by_user_id = ?, created_by_employee_id = ? WHERE id = ?`,
+      [creator.userId, creator.employeeId, voucherId]
+    );
     // Insert voucher transaction
     const [ledgerRow] = await conn.query(`SELECT name, underGroup FROM ledgers WHERE id = ? AND companyId = ?`, [ledger, companyId]);
     let transactionAccountType = 'ledger';

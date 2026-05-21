@@ -2,6 +2,7 @@ import pool from "../db.js";
 import fs from "fs";
 import path from "path";
 import { generateContraVoucherPDF } from "../utils/contraVoucherPdfUtils.js";
+import { ensureCreatorColumns, getCreatorFromRequest } from "../utils/creatorTracking.js";
 
 const getAccountName = async (ledgerId, companyId) => {
   if (!ledgerId) return "N/A";
@@ -134,6 +135,7 @@ const updateAccountBalance = async (connOrPool, accountId, companyId, amount, is
 export const createContraVoucher = async (req, res) => {
   const { companyId } = req.params;
   console.log("contra Receving Body", req.body);
+  const creator = getCreatorFromRequest(req);
 
   const {
     voucherNo,
@@ -152,6 +154,7 @@ export const createContraVoucher = async (req, res) => {
 
     const gstAmount = (totalAmount * (gstRate || 0)) / 100;
     const grandTotal = totalAmount + gstAmount;
+    await ensureCreatorColumns(pool, "contra_vouchers");
 
     // Insert voucher header
     const [voucherResult] = await pool.query(
@@ -172,6 +175,10 @@ export const createContraVoucher = async (req, res) => {
     );
 
     const voucherId = voucherResult.insertId;
+    await pool.query(
+      `UPDATE contra_vouchers SET created_by_user_id = ?, created_by_employee_id = ? WHERE id = ?`,
+      [creator.userId, creator.employeeId, voucherId]
+    );
 
     // Process each transaction
     for (let t of transactions) {

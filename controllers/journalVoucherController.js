@@ -2,6 +2,7 @@ import pool from "../db.js";
 import fs from "fs";
 import path from "path";
 import { generateJournalVoucherPDF } from "../utils/journalVoucherPdfUtils.js";
+import { ensureCreatorColumns, getCreatorFromRequest } from "../utils/creatorTracking.js";
 
 const getAccountName = async (ledgerId, companyId) => {
   if (!ledgerId) return "N/A";
@@ -24,6 +25,7 @@ const getAccountName = async (ledgerId, companyId) => {
 export const createJournalVoucher = async (req, res) => {
   const { companyId } = req.params;
   const { date, narration, transactions } = req.body;
+  const creator = getCreatorFromRequest(req);
   console.log(req.body);
 
 
@@ -53,6 +55,7 @@ export const createJournalVoucher = async (req, res) => {
 
   try {
     await connection.beginTransaction();
+    await ensureCreatorColumns(connection, "journal_vouchers");
 
     // Insert into main voucher table
     const [voucherResult] = await connection.query(
@@ -63,6 +66,10 @@ export const createJournalVoucher = async (req, res) => {
     );
 
     const voucherId = voucherResult.insertId;
+    await connection.query(
+      `UPDATE journal_vouchers SET created_by_user_id = ?, created_by_employee_id = ? WHERE id = ?`,
+      [creator.userId, creator.employeeId, voucherId]
+    );
 
     // Insert each transaction row
     for (const t of transactions) {

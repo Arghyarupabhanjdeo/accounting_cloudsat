@@ -341,3 +341,41 @@ console.log(rows);
   }
 };
 
+
+export const getManufacturingList = async (req, res) => {
+  const { companyId } = req.params;
+
+  try {
+    // Fetch all journals for the company
+    const [journals] = await pool.query(
+      `SELECT * FROM manufacturing_journal WHERE companyId = ? ORDER BY date DESC, id DESC`,
+      [companyId]
+    );
+
+    // For each journal, fetch associated components and by-products
+    const detailedJournals = await Promise.all(
+      journals.map(async (j) => {
+        const [components] = await pool.query(
+          `SELECT * FROM manufacturing_components WHERE journalId = ?`,
+          [j.id]
+        );
+        const [byProducts] = await pool.query(
+          `SELECT * FROM manufacturing_byproducts WHERE journalId = ?`,
+          [j.id]
+        );
+        return { ...j, components, byProducts };
+      })
+    );
+
+    res.status(200).json({
+      success: true,
+      data: detailedJournals,
+    });
+  } catch (error) {
+    console.error("GET MANUFACTURING LIST ERROR:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch manufacturing journals",
+    });
+  }
+};

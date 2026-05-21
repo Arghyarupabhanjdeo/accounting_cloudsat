@@ -2,6 +2,7 @@ import pool from "../db.js";
 import fs from "fs";
 import path from "path";
 import { generateReceiptPDF } from "../utils/receiptPdfUtils.js";
+import { ensureCreatorColumns, getCreatorFromRequest } from "../utils/creatorTracking.js";
 
 const getAccountName = async (ledgerId, companyId) => {
   if (!ledgerId) return "N/A";
@@ -81,8 +82,10 @@ const getAccountName = async (ledgerId, companyId) => {
 
 export const createReceiveVoucher = async (req, res) => {
   const { companyId } = req.params;
+  const creator = getCreatorFromRequest(req);
 
   try {
+    await ensureCreatorColumns(pool, "receive_vouchers");
     const {
       voucherNo,
       date,
@@ -170,6 +173,10 @@ export const createReceiveVoucher = async (req, res) => {
 
       console.log("LEDGER UPDATE RESULT => ", result);
     }
+    await pool.query(
+      `UPDATE receive_vouchers SET created_by_user_id = ?, created_by_employee_id = ? WHERE companyId = ? AND voucherId = ?`,
+      [creator.userId, creator.employeeId, companyId, voucherNo]
+    );
 
 
     // Pre-generate PDF for instant preview

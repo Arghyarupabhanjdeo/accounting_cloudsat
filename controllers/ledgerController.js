@@ -113,36 +113,7 @@
 
 
 import pool from "../db.js";
-import jwt from "jsonwebtoken";
-
-const getCreatorFromRequest = (req) => {
-  const bodyUserId = req.body.created_by_user_id ?? req.body.createdByUserId ?? null;
-  const bodyEmployeeId = req.body.created_by_employee_id ?? req.body.createdByEmployeeId ?? null;
-
-  if (bodyUserId || bodyEmployeeId) {
-    return {
-      userId: bodyUserId || null,
-      employeeId: bodyEmployeeId || null,
-    };
-  }
-
-  const authHeader = req.headers.authorization || "";
-  const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : req.cookies?.token;
-
-  if (!token) {
-    return { userId: null, employeeId: null };
-  }
-
-  try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    return {
-      userId: decoded.id || null,
-      employeeId: decoded.employee_id || null,
-    };
-  } catch {
-    return { userId: null, employeeId: null };
-  }
-};
+import { ensureCreatorColumns, getCreatorFromRequest } from "../utils/creatorTracking.js";
 
 // ✅ Create Ledger (Company Based)
 export const createLedger = async (req, res) => {
@@ -170,8 +141,7 @@ export const createLedger = async (req, res) => {
     } = req.body;
 console.log(req.body);
     const creator = getCreatorFromRequest(req);
-    await pool.query(`ALTER TABLE ledgers ADD COLUMN IF NOT EXISTS created_by_user_id INT DEFAULT NULL`).catch(() => {});
-    await pool.query(`ALTER TABLE ledgers ADD COLUMN IF NOT EXISTS created_by_employee_id INT DEFAULT NULL`).catch(() => {});
+    await ensureCreatorColumns(pool, "ledgers");
 
          let parsedUnder = JSON.parse(under);
 
