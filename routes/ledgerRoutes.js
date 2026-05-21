@@ -32,7 +32,7 @@ const router = express.Router();
 // All routes now include companyId
 router.post("/:companyId/create", createLedger);
 router.get("/:companyId/all", getLedgers);
-// router.get("/:companyId/:id", getLedgerById);
+router.get("/:companyId/:id", getLedgerById);
 router.get("/getUpdateHistory/:companyId",updateLedgerHistory)
 router.put("/update/:companyId/:id",updateLedger)
 router.delete("/:companyId/:id", deleteLedger);
