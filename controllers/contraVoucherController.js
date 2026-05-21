@@ -5,12 +5,63 @@ import { generateContraVoucherPDF } from "../utils/contraVoucherPdfUtils.js";
 
 const getAccountName = async (ledgerId, companyId) => {
   if (!ledgerId) return "N/A";
+  if (ledgerId === "cash") return "Cash";
+  if (typeof ledgerId === "string" && ledgerId.startsWith("bank_")) {
+    try {
+      const bankId = parseInt(ledgerId.split("_")[1], 10);
+      if (!isNaN(bankId)) {
+        const [[bank]] = await pool.query(
+          "SELECT accountName, bankName FROM bank_accounts WHERE id = ? AND companyId = ?",
+          [bankId, companyId]
+        );
+        return bank ? `${bank.accountName} (${bank.bankName})` : "N/A";
+      }
+    } catch (err) {
+      console.error("Error in getAccountName for bank:", err);
+      return "N/A";
+    }
+  }
   try {
     const [[ledger]] = await pool.query("SELECT name FROM ledgers WHERE id = ? AND companyId = ?", [ledgerId, companyId]);
     return ledger ? ledger.name : "N/A";
   } catch (err) {
     console.error("Error in getAccountName:", err);
     return "N/A";
+  }
+};
+
+const updateAccountBalance = async (connOrPool, accountId, companyId, amount, isAddition) => {
+  if (!accountId) return;
+  const numericAmount = parseFloat(amount) || 0;
+  const factor = isAddition ? 1 : -1;
+  const change = numericAmount * factor;
+
+  if (accountId === "cash") {
+    // Update the Cash ledger closing balance
+    await connOrPool.query(
+      `UPDATE ledgers 
+       SET closingBalance = closingBalance + ?
+       WHERE name = 'Cash' AND companyId = ?`,
+      [change, companyId]
+    );
+  } else if (typeof accountId === "string" && accountId.startsWith("bank_")) {
+    const bankId = parseInt(accountId.split("_")[1], 10);
+    if (!isNaN(bankId)) {
+      await connOrPool.query(
+        `UPDATE bank_accounts 
+         SET currentBalance = currentBalance + ?
+         WHERE id = ? AND companyId = ?`,
+        [change, bankId, companyId]
+      );
+    }
+  } else {
+    // Fallback: update ledgers table directly
+    await connOrPool.query(
+      `UPDATE ledgers 
+       SET closingBalance = closingBalance + ?
+       WHERE id = ? AND companyId = ?`,
+      [change, accountId, companyId]
+    );
   }
 };
 
@@ -134,24 +185,8 @@ export const createContraVoucher = async (req, res) => {
       );
 
       // 2️⃣ UPDATE ledger balances
-
-      const amount = parseFloat(t.amount) || 0;
-
-      // Reduce FROM ledger closing balance
-      await pool.query(
-        `UPDATE ledgers 
-         SET closingBalance = closingBalance - ?
-         WHERE id = ? AND companyId = ?`,
-        [amount, t.fromAccount, companyId]
-      );
-
-      // Increase TO ledger closing balance
-      await pool.query(
-        `UPDATE ledgers 
-         SET closingBalance = closingBalance + ?
-         WHERE id = ? AND companyId = ?`,
-        [amount, t.toAccount, companyId]
-      );
+      await updateAccountBalance(pool, t.fromAccount, companyId, t.amount, false);
+      await updateAccountBalance(pool, t.toAccount, companyId, t.amount, true);
     }
 
     // Generate and save PDF on create
@@ -316,23 +351,10 @@ export const deleteContraVoucher = async (req, res) => {
 
     // Revert ledger balances
     for (const t of transactions) {
-      const amount = parseFloat(t.amount) || 0;
-
-      // Add back to FROM ledger
-      await conn.query(
-        `UPDATE ledgers 
-         SET closingBalance = closingBalance + ?
-         WHERE id = ? AND companyId = ?`,
-        [amount, t.fromAccount, companyId]
-      );
-
-      // Subtract from TO ledger
-      await conn.query(
-        `UPDATE ledgers 
-         SET closingBalance = closingBalance - ?
-         WHERE id = ? AND companyId = ?`,
-        [amount, t.toAccount, companyId]
-      );
+      // Add back to FROM account
+      await updateAccountBalance(conn, t.fromAccount, companyId, t.amount, true);
+      // Subtract from TO account
+      await updateAccountBalance(conn, t.toAccount, companyId, t.amount, false);
     }
 
     // Delete child transactions
@@ -404,23 +426,10 @@ export const updateContraVoucher = async (req, res) => {
 
     // Revert old ledger balances
     for (const oldT of oldTransactions) {
-      const amount = parseFloat(oldT.amount) || 0;
-
-      // Add back to FROM ledger
-      await conn.query(
-        `UPDATE ledgers 
-         SET closingBalance = closingBalance + ?
-         WHERE id = ? AND companyId = ?`,
-        [amount, oldT.fromAccount, activeCompanyId]
-      );
-
-      // Subtract from TO ledger
-      await conn.query(
-        `UPDATE ledgers 
-         SET closingBalance = closingBalance - ?
-         WHERE id = ? AND companyId = ?`,
-        [amount, oldT.toAccount, activeCompanyId]
-      );
+      // Add back to FROM account
+      await updateAccountBalance(conn, oldT.fromAccount, activeCompanyId, oldT.amount, true);
+      // Subtract from TO account
+      await updateAccountBalance(conn, oldT.toAccount, activeCompanyId, oldT.amount, false);
     }
 
     // 2️⃣ Delete old transaction rows
@@ -466,23 +475,10 @@ export const updateContraVoucher = async (req, res) => {
         [id, t.fromAccount, t.toAccount, t.amount, t.narration]
       );
 
-      const amount = parseFloat(t.amount) || 0;
-
-      // Reduce FROM ledger
-      await conn.query(
-        `UPDATE ledgers 
-         SET closingBalance = closingBalance - ?
-         WHERE id = ? AND companyId = ?`,
-        [amount, t.fromAccount, activeCompanyId]
-      );
-
-      // Increase TO ledger
-      await conn.query(
-        `UPDATE ledgers 
-         SET closingBalance = closingBalance + ?
-         WHERE id = ? AND companyId = ?`,
-        [amount, t.toAccount, activeCompanyId]
-      );
+      // Reduce FROM account
+      await updateAccountBalance(conn, t.fromAccount, activeCompanyId, t.amount, false);
+      // Increase TO account
+      await updateAccountBalance(conn, t.toAccount, activeCompanyId, t.amount, true);
     }
 
     await conn.commit();
@@ -586,24 +582,8 @@ export const bulkCreateContraVoucher = async (req, res) => {
         );
 
         // 2️⃣ UPDATE ledger balances
-
-        const amount = parseFloat(t.amount) || 0;
-
-        // Reduce FROM ledger closing balance
-        await conn.query(
-          `UPDATE ledgers 
-           SET closingBalance = closingBalance - ?
-           WHERE id = ? AND companyId = ?`,
-          [amount, t.fromAccount, companyId]
-        );
-
-        // Increase TO ledger closing balance
-        await conn.query(
-          `UPDATE ledgers 
-           SET closingBalance = closingBalance + ?
-           WHERE id = ? AND companyId = ?`,
-          [amount, t.toAccount, companyId]
-        );
+        await updateAccountBalance(conn, t.fromAccount, companyId, t.amount, false);
+        await updateAccountBalance(conn, t.toAccount, companyId, t.amount, true);
       }
     }
 

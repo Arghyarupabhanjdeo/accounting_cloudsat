@@ -3,7 +3,7 @@ import {
   createTransaction,
   getTransactions,
   updateTransaction,
-  deleteTransaction
+  deleteTransaction,
 } from "../controllers/bankTransactionController.js";
 
 const router = express.Router();
@@ -15,4 +15,4 @@ router.delete("/:id/delete", deleteTransaction);
 
 export default router;
 
-//http://localhost:3000/api/v1/bank-transaction
+// http://localhost:3000/api/v1/bank-transaction

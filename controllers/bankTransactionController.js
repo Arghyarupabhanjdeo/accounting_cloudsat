@@ -6,7 +6,6 @@ export const createTransaction = async (req, res) => {
   const data = req.body;
 
   try {
-    // Insert transaction
     const q = `
       INSERT INTO bank_transactions
       (companyId, accountId, date, description, transactionType, amount, category, referenceNumber, balanceAfter)
@@ -25,7 +24,7 @@ export const createTransaction = async (req, res) => {
       data.balanceAfter,
     ];
 
-    await pool.query(q, values);
+    const [result] = await pool.query(q, values);
 
     // Update account balance
     if (data.transactionType === "credit") {
@@ -40,37 +39,91 @@ export const createTransaction = async (req, res) => {
       );
     }
 
-    res.json({ success: true });
+    res.json({ success: true, id: result.insertId });
   } catch (err) {
-    res.status(500).json({ success: false, message: err });
+    console.error("Create Transaction Error:", err);
+    res.status(500).json({ success: false, message: err.message });
   }
 };
 
-// 📌 Get Transactions by Account
+// 📌 Get Transactions by Account — includes manual + voucher-generated
 export const getTransactions = async (req, res) => {
   const { accountId } = req.params;
 
   try {
+    const bankIdStr = `bank_${accountId}`;
     const [rows] = await pool.query(
-      `SELECT * FROM bank_transactions WHERE accountId = ? ORDER BY date DESC`,
-      [accountId]
+      `SELECT 
+        id, 
+        date, 
+        description, 
+        transactionType, 
+        amount, 
+        category, 
+        referenceNumber, 
+        balanceAfter,
+        'manual' AS source
+       FROM bank_transactions 
+       WHERE accountId = ?
+       UNION ALL
+       SELECT 
+        id, 
+        date, 
+        CONCAT(voucherType, ' Voucher: ', IFNULL(narration, '')) AS description, 
+        CASE WHEN debit > 0 THEN 'credit' ELSE 'debit' END AS transactionType, 
+        CASE WHEN debit > 0 THEN debit ELSE credit END AS amount, 
+        voucherType AS category, 
+        voucherId AS referenceNumber, 
+        0 AS balanceAfter,
+        'voucher' AS source
+       FROM voucher_transactions 
+       WHERE ledgerId = ?
+       ORDER BY date DESC`,
+      [accountId, bankIdStr]
     );
 
     res.json({ success: true, transactions: rows });
   } catch (err) {
-    res.status(500).json({ success: false, message: err });
+    console.error("Get Transactions Error:", err);
+    res.status(500).json({ success: false, message: "Internal Server Error" });
   }
 };
 
-// ✏️ Edit Transaction
+// ✏️ Update Transaction
 export const updateTransaction = async (req, res) => {
   const { id } = req.params;
+  const {
+    date,
+    description,
+    transactionType,
+    amount,
+    category,
+    referenceNumber,
+    balanceAfter,
+  } = req.body;
 
   try {
-    await pool.query(`UPDATE bank_transactions SET ? WHERE id = ?`, [req.body, id]);
+    const q = `
+      UPDATE bank_transactions 
+      SET date = ?, description = ?, transactionType = ?, amount = ?, category = ?, referenceNumber = ?, balanceAfter = ?
+      WHERE id = ?
+    `;
+    const values = [
+      date,
+      description,
+      transactionType,
+      amount,
+      category,
+      referenceNumber,
+      balanceAfter,
+      id,
+    ];
+
+    await pool.query(q, values);
     res.json({ success: true });
   } catch (err) {
-    res.status(500).json({ success: false, message: err });
+    console.error("Update Transaction Error:", err);
+    res.status(500).json({ success: false, message: "Internal Server Error" });
   }
 };
 
@@ -82,6 +135,7 @@ export const deleteTransaction = async (req, res) => {
     await pool.query(`DELETE FROM bank_transactions WHERE id = ?`, [id]);
     res.json({ success: true });
   } catch (err) {
-    res.status(500).json({ success: false, message: err });
+    console.error("Delete Transaction Error:", err);
+    res.status(500).json({ success: false, message: err.message });
   }
 };

@@ -256,7 +256,7 @@ export const syncUser = async (req, res) => {
       const companyName = name || subdomain || email.split("@")[0];
       const [insertResult] = await pool.query(
         `INSERT INTO companies (name, email, userId, gstRegistered, gstin) VALUES (?, ?, ?, ?, ?)`,
-        [companyName, email, accountingUser.id, 0, ""]
+       [companyName, email, accountingUser.id, "No", null]
       );
       const [newCompany] = await pool.query("SELECT * FROM companies WHERE id = ?", [insertResult.insertId]);
       company = newCompany[0];
