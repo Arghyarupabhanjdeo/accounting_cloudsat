@@ -38,7 +38,7 @@ import { initSubscriptionCron } from "./utils/subscriptionCron.js";
 const app = express();
 
 
-const allowOrigins = ["http://localhost:5173", "http://localhost:5174", "https://accounting.csaap.com", "https://buildererp.csaap.com", "https://cloudsat.in/", "https://www.cloudsat.in/,"];
+const allowOrigins = ["http://localhost:5173", "http://localhost:5174", "https://accounting.csaap.com", "https://buildererp.csaap.com", "https://cloudsat.in/", "https://www.cloudsat.in/,", "https://hrmsapi.csaap.com","https://www.hrmsapi.csaap.com"];
 
 app.use(
   cors({

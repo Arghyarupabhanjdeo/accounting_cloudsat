@@ -68,7 +68,7 @@ export const generateManufacturingPDF = async (data, fileName, subDir) => {
             doc.rect(MARGIN, y, CONTENT_WIDTH, HEADER_BAR_HEIGHT).fill("#2d5a88");
             
             doc.fillColor("#ffffff").fontSize(9).font("Helvetica-Bold");
-            doc.text("Cloudsat Private Limited", MARGIN, y + 5, { width: CONTENT_WIDTH, align: 'center' });
+            doc.text(data.sender.company_name, MARGIN, y + 5, { width: CONTENT_WIDTH, align: 'center' });
             
             y += HEADER_BAR_HEIGHT + 10;
             doc.fillColor("#000000"); // Reset color
