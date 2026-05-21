@@ -113,6 +113,36 @@
 
 
 import pool from "../db.js";
+import jwt from "jsonwebtoken";
+
+const getCreatorFromRequest = (req) => {
+  const bodyUserId = req.body.created_by_user_id ?? req.body.createdByUserId ?? null;
+  const bodyEmployeeId = req.body.created_by_employee_id ?? req.body.createdByEmployeeId ?? null;
+
+  if (bodyUserId || bodyEmployeeId) {
+    return {
+      userId: bodyUserId || null,
+      employeeId: bodyEmployeeId || null,
+    };
+  }
+
+  const authHeader = req.headers.authorization || "";
+  const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : req.cookies?.token;
+
+  if (!token) {
+    return { userId: null, employeeId: null };
+  }
+
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    return {
+      userId: decoded.id || null,
+      employeeId: decoded.employee_id || null,
+    };
+  } catch {
+    return { userId: null, employeeId: null };
+  }
+};
 
 // ✅ Create Ledger (Company Based)
 export const createLedger = async (req, res) => {
@@ -139,6 +169,10 @@ export const createLedger = async (req, res) => {
       bankDetails,
     } = req.body;
 console.log(req.body);
+    const creator = getCreatorFromRequest(req);
+    await pool.query(`ALTER TABLE ledgers ADD COLUMN IF NOT EXISTS created_by_user_id INT DEFAULT NULL`).catch(() => {});
+    await pool.query(`ALTER TABLE ledgers ADD COLUMN IF NOT EXISTS created_by_employee_id INT DEFAULT NULL`).catch(() => {});
+
          let parsedUnder = JSON.parse(under);
 
            let underGroup = parsedUnder.name;  // GROUP1
@@ -149,8 +183,8 @@ console.log(req.body);
       `INSERT INTO ledgers 
       (companyId,groupId, name, aliasName, underGroup, openingBalance, balanceType, mailingName, 
       address, state, country, pincode, haveBankDetails, pan, registrationType, 
-      gstin, alterGstDetails)
-      VALUES (?,?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      gstin, alterGstDetails, created_by_user_id, created_by_employee_id)
+      VALUES (?,?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         companyId,
         groupId,
@@ -169,6 +203,8 @@ console.log(req.body);
         registrationType,
         gstin,
         alterGst,
+        creator.userId,
+        creator.employeeId,
       ]
     );
 
@@ -198,10 +234,16 @@ export const getLedgers = async (req, res) => {
     const { companyId } = req.params;
 
     const [rows] = await pool.query(
-      `SELECT l.*, b.bankName, b.branch, b.accountNumber, b.ifsc
+      `SELECT l.*, b.bankName, b.branch, b.accountNumber, b.ifsc,
+              u.name AS created_by_name,
+              u.email AS created_by_email,
+              u.role AS created_by_role,
+              u.employee_id AS creator_employee_id
        FROM ledgers l
        LEFT JOIN bank_details b 
        ON l.id = b.ledgerId AND b.companyId = ?
+       LEFT JOIN users u
+       ON l.created_by_user_id = u.id
        WHERE l.companyId = ?
        ORDER BY l.id DESC`,
       [companyId, companyId]
@@ -219,7 +261,15 @@ export const getLedgerById = async (req, res) => {
     const { companyId, id } = req.params;
 
     const [ledger] = await pool.query(
-      `SELECT * FROM ledgers WHERE id = ? AND (companyId = ? OR companyId IS NULL)`,
+      `SELECT l.*,
+              u.name AS created_by_name,
+              u.email AS created_by_email,
+              u.role AS created_by_role,
+              u.employee_id AS creator_employee_id
+       FROM ledgers l
+       LEFT JOIN users u
+       ON l.created_by_user_id = u.id
+       WHERE l.id = ? AND (l.companyId = ? OR l.companyId IS NULL)`,
       [id, companyId]
     );
 

@@ -168,7 +168,7 @@ export const getAuthenticatedUser = async (req, res) => {
     const userId = req.user.id;
 
     const [rows] = await pool.query(
-      `SELECT id, name, email, subdomain, role FROM users WHERE id = ?`,
+      `SELECT id, name, email, subdomain, role, employee_id FROM users WHERE id = ?`,
       [userId]
     );
 
@@ -189,6 +189,7 @@ export const getAuthenticatedUser = async (req, res) => {
         name: user.name,
         subdomain: user.subdomain,
         role: user.role || "user",
+        employee_id: user.employee_id || null,
       },
     });
   } catch (error) {
@@ -205,7 +206,7 @@ export const getAuthenticatedUser = async (req, res) => {
 // Upserts user, auto-creates company if none exists, returns accounting JWT
 export const syncUser = async (req, res) => {
   try {
-    const { name, email, subdomain, role } = req.body;
+    const { name, email, subdomain, role, employee_id, company_id } = req.body;
 
     if (!email) {
       return res.status(400).json({ success: false, message: "Email is required for sync." });
@@ -214,6 +215,7 @@ export const syncUser = async (req, res) => {
     // 0️⃣ Ensure subdomain + role columns exist (safe, idempotent)
     await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS subdomain VARCHAR(255) DEFAULT NULL`).catch(() => {});
     await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS role VARCHAR(50) DEFAULT 'user'`).catch(() => {});
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS employee_id INT DEFAULT NULL`).catch(() => {});
 
     // 1️⃣ Upsert user by email
     const [existing] = await pool.query("SELECT * FROM users WHERE email = ?", [email]);
@@ -223,11 +225,12 @@ export const syncUser = async (req, res) => {
     if (existing.length > 0) {
       // Update name/subdomain/role
       await pool.query(
-        "UPDATE users SET name = ?, subdomain = ?, role = ? WHERE email = ?",
+        "UPDATE users SET name = ?, subdomain = ?, role = ?, employee_id = ? WHERE email = ?",
         [
           name || existing[0].name,
           subdomain || existing[0].subdomain,
           role || existing[0].role || "superadmin",
+          employee_id ?? existing[0].employee_id ?? null,
           email
         ]
       );
@@ -236,20 +239,30 @@ export const syncUser = async (req, res) => {
     } else {
       // Insert new user (no password — auth is via Cloudsat)
       const [result] = await pool.query(
-        "INSERT INTO users (name, email, subdomain, role, password) VALUES (?, ?, ?, ?, ?)",
-        [name, email, subdomain, role || "superadmin", ""]
+        "INSERT INTO users (name, email, subdomain, role, employee_id, password) VALUES (?, ?, ?, ?, ?, ?)",
+        [name, email, subdomain, role || "superadmin", employee_id ?? null, ""]
       );
       const [newUser] = await pool.query("SELECT * FROM users WHERE id = ?", [result.insertId]);
       accountingUser = newUser[0];
     }
 
     // 2️⃣ Check if this user already has a company
-    const [existingCompanies] = await pool.query(
-      "SELECT * FROM companies WHERE userId = ? ORDER BY id ASC LIMIT 1",
-      [accountingUser.id]
-    );
+    let company = null;
+    if (company_id) {
+      const [selectedCompany] = await pool.query(
+        "SELECT * FROM companies WHERE id = ? LIMIT 1",
+        [company_id]
+      );
+      company = selectedCompany[0] || null;
+    }
 
-    let company = existingCompanies[0] || null;
+    if (!company) {
+      const [existingCompanies] = await pool.query(
+        "SELECT * FROM companies WHERE userId = ? ORDER BY id ASC LIMIT 1",
+        [accountingUser.id]
+      );
+      company = existingCompanies[0] || null;
+    }
 
     if (!company) {
       // 3️⃣ Auto-create a default company using subdomain/name
@@ -265,7 +278,12 @@ export const syncUser = async (req, res) => {
 
     // 4️⃣ Issue accounting-signed JWT
     const accountingToken = jwt.sign(
-      { id: accountingUser.id, email: accountingUser.email, role: accountingUser.role || "superadmin" },
+      {
+        id: accountingUser.id,
+        email: accountingUser.email,
+        role: accountingUser.role || "superadmin",
+        employee_id: accountingUser.employee_id || null,
+      },
       process.env.JWT_SECRET,
       { expiresIn: "7d" }
     );
@@ -288,6 +306,7 @@ export const syncUser = async (req, res) => {
         email: accountingUser.email,
         subdomain: accountingUser.subdomain,
         role: accountingUser.role || "superadmin",
+        employee_id: accountingUser.employee_id || null,
       },
       company: {
         id: company.id,
