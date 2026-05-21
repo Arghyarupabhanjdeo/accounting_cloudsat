@@ -496,10 +496,12 @@ export const updatePaymentVoucher = async (req, res) => {
 
 export const bulkCreatePaymentVoucher = async (req, res) => {
   const { companyId, vouchers } = req.body;
+  const creator = getCreatorFromRequest(req);
   const conn = await pool.getConnection();
 
   try {
     await conn.beginTransaction();
+    await ensureCreatorColumns(conn, "payment_vouchers");
 
     for (const voucher of vouchers) {
       const {
@@ -519,8 +521,8 @@ export const bulkCreatePaymentVoucher = async (req, res) => {
         await conn.query(
           `
           INSERT INTO payment_vouchers
-          (companyId, voucherNo, date, accountType, narration, totalAmount, ledgerId, amount)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+          (companyId, voucherNo, date, accountType, narration, totalAmount, ledgerId, amount, created_by_user_id, created_by_employee_id)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           `,
           [
             companyId,
@@ -530,7 +532,9 @@ export const bulkCreatePaymentVoucher = async (req, res) => {
             narration,
             totalAmount,
             ledgerId,
-            amount
+            amount,
+            creator.userId,
+            creator.employeeId
           ]
         );
 

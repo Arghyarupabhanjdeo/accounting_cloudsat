@@ -249,10 +249,12 @@ export const getReceiveVoucher = async (req, res) => {
 
 export const bulkCreateReceiveVoucher = async (req, res) => {
   const { companyId, vouchers } = req.body;
+  const creator = getCreatorFromRequest(req);
   const conn = await pool.getConnection();
 
   try {
     await conn.beginTransaction();
+    await ensureCreatorColumns(conn, "receive_vouchers");
 
     for (const voucher of vouchers) {
       const {
@@ -286,9 +288,11 @@ export const bulkCreateReceiveVoucher = async (req, res) => {
             narration,
             customer,
             amount,
-            totalAmount
+            totalAmount,
+            created_by_user_id,
+            created_by_employee_id
           )
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           `,
           [
             voucherNo,
@@ -301,6 +305,8 @@ export const bulkCreateReceiveVoucher = async (req, res) => {
             ledgerId,
             amount,
             i === 0 ? totalAmount : null,
+            creator.userId,
+            creator.employeeId,
           ]
         );
 

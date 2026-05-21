@@ -1,5 +1,6 @@
 
 import pool from "../db.js";
+import { ensureCreatorColumns, getCreatorFromRequest } from "../utils/creatorTracking.js";
 
 // export const createManufacturingJournal = async (req, res) => {
 //   const { companyId } = req.params;
@@ -145,6 +146,7 @@ import pool from "../db.js";
 
 export const createManufacturingJournal = async (req, res) => {
   const { companyId } = req.params;
+  const creator = getCreatorFromRequest(req);
 
   const {
     voucherNo,
@@ -166,14 +168,15 @@ export const createManufacturingJournal = async (req, res) => {
 
   try {
     await conn.beginTransaction();
+    await ensureCreatorColumns(conn, "manufacturing_journal");
 
     /* ===============================
        1️⃣ INSERT MANUFACTURING JOURNAL
        =============================== */
     const [journal] = await conn.query(
       `INSERT INTO manufacturing_journal 
-      (companyId, voucherNo, date, productName, godown, finishedQty, costAllocation, costTracking, addlCost, grandTotal, effectiveRatePerFinished, narration)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      (companyId, voucherNo, date, productName, godown, finishedQty, costAllocation, costTracking, addlCost, grandTotal, effectiveRatePerFinished, narration, created_by_user_id, created_by_employee_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         companyId,
         voucherNo,
@@ -187,6 +190,8 @@ export const createManufacturingJournal = async (req, res) => {
         grandTotal,
         effectiveRatePerFinished,
         narration,
+        creator.userId,
+        creator.employeeId,
       ]
     );
 console.log(req.body);

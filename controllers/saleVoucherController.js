@@ -403,11 +403,12 @@ export const createSalesVoucher = async (req, res) => {
         transactionAccountType = ledgerRow[0].name;
       }
 
+      await ensureCreatorColumns(pool, "voucher_transactions");
       await pool.query(
         `INSERT INTO voucher_transactions 
-        (companyId, ledgerId, voucherType, voucherId, debit, credit, date, narration, accountType)
-        VALUES (?, ?, 'Sales', ?, ?, 0, ?, ?, ?)`,
-        [companyId, ledgerId, voucherId, grand_total, date, narration, transactionAccountType]
+        (companyId, ledgerId, voucherType, voucherId, debit, credit, date, narration, accountType, created_by_user_id, created_by_employee_id)
+        VALUES (?, ?, 'Sales', ?, ?, 0, ?, ?, ?, ?, ?)`,
+        [companyId, ledgerId, voucherId, grand_total, date, narration, transactionAccountType, creator.userId, creator.employeeId]
       );
     }
 
@@ -769,10 +770,12 @@ export const ewaybill = async (req, res) => {
 
 export const bulkCreateSalesVoucher = async (req, res) => {
   const { companyId, vouchers } = req.body;
+  const creator = getCreatorFromRequest(req);
   const connection = await pool.getConnection();
 
   try {
     await connection.beginTransaction();
+    await ensureCreatorColumns(connection, "sales_vouchers");
 
     /* ================= SENDER/COMPANY INFO ================= */
     const [companyRows] = await connection.query(
@@ -820,7 +823,7 @@ export const bulkCreateSalesVoucher = async (req, res) => {
         mailingName, address, state, country, pincode,
         gstRegistrationType, gstin, placeOfSupply,
         igst_rate, cgst_rate, sgst_rate, carrierName,
-        consigneeSameAsBilling
+        consigneeSameAsBilling, created_by_user_id, created_by_employee_id
       )
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
               ?, ?, ?, ?, ?,
@@ -831,7 +834,8 @@ export const bulkCreateSalesVoucher = async (req, res) => {
               ?, ?, ?, ?, ?,
               ?, ?, ?, ?, ?,
               ?, ?, ?, ?, ?,
-              ?, ?, ?, ?, ?)
+              ?, ?, ?, ?, ?,
+              ?, ?)
     `;
 
     const insertItemQuery = `
@@ -964,7 +968,9 @@ export const bulkCreateSalesVoucher = async (req, res) => {
         cgst_rate || 0,
         sgst_rate || 0,
         carrierName || null,
-        consigneeSameAsBilling ? 1 : 0
+        consigneeSameAsBilling ? 1 : 0,
+        creator.userId,
+        creator.employeeId
       ]);
 
       const voucherId = voucherResult.insertId;
@@ -981,11 +987,12 @@ export const bulkCreateSalesVoucher = async (req, res) => {
         }
       }
 
+      await ensureCreatorColumns(connection, "voucher_transactions");
       await connection.query(
         `INSERT INTO voucher_transactions 
-         (companyId, ledgerId, voucherType, voucherId, debit, credit, date, accountType)
-         VALUES (?, ?, 'Sales', ?, ?, 0, ?, ?)`,
-        [companyId, ledgerId, voucherId, grand_total, date, transactionAccountType]
+         (companyId, ledgerId, voucherType, voucherId, debit, credit, date, accountType, created_by_user_id, created_by_employee_id)
+         VALUES (?, ?, 'Sales', ?, ?, 0, ?, ?, ?, ?)`,
+        [companyId, ledgerId, voucherId, grand_total, date, transactionAccountType, creator.userId, creator.employeeId]
       );
 
       for (const sold of items) {

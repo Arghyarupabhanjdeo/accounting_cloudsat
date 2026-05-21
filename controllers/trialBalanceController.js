@@ -1,8 +1,10 @@
 import pool from "../db.js";
+import { ensureCreatorColumns, getCreatorFromRequest } from "../utils/creatorTracking.js";
 
 // ➜ Add Ledger Entry
 export const addLedger = async (req, res) => {
   const { companyId } = req.params;
+  const creator = getCreatorFromRequest(req);
   console.log(req.body);
   
   const {
@@ -14,10 +16,11 @@ export const addLedger = async (req, res) => {
   } = req.body;
 
   try {
+    await ensureCreatorColumns(pool, "trial_balance");
     const [result] = await pool.query(
       `INSERT INTO trial_balance 
-        (companyId, ledgerName, openingDebit, openingCredit, closingDebit, closingCredit)
-       VALUES (?, ?, ?, ?, ?, ?)`,
+        (companyId, ledgerName, openingDebit, openingCredit, closingDebit, closingCredit, created_by_user_id, created_by_employee_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         companyId,
         ledgerName,
@@ -25,6 +28,8 @@ export const addLedger = async (req, res) => {
         openingCredit || 0,
         closingDebit || 0,
         closingCredit || 0,
+        creator.userId,
+        creator.employeeId,
       ]
     );
 

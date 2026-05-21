@@ -1,15 +1,18 @@
 import pool from "../db.js";
+import { ensureCreatorColumns, getCreatorFromRequest } from "../utils/creatorTracking.js";
 
 // ➕ Create Bank Account
 export const createBankAccount = async (req, res) => {
   const { companyId } = req.params;
   const data = req.body;
+  const creator = getCreatorFromRequest(req);
 
   try {
+    await ensureCreatorColumns(pool, "bank_accounts");
     const q = `
       INSERT INTO bank_accounts
-      (companyId, accountName, bankName, accountNumber, ifscCode, branchName, openingDate, accountType, currentBalance)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      (companyId, accountName, bankName, accountNumber, ifscCode, branchName, openingDate, accountType, currentBalance, created_by_user_id, created_by_employee_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
     const values = [
@@ -22,6 +25,8 @@ export const createBankAccount = async (req, res) => {
       data.openingDate,
       data.accountType,
       data.currentBalance,
+      creator.userId,
+      creator.employeeId,
     ];
 
     const [result] = await pool.query(q, values);

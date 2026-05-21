@@ -178,10 +178,12 @@ export const getJournalVoucherById = async (req, res) => {
 
 export const bulkCreateJournalVoucher = async (req, res) => {
   const { companyId, vouchers } = req.body;
+  const creator = getCreatorFromRequest(req);
   const connection = await pool.getConnection();
 
   try {
     await connection.beginTransaction();
+    await ensureCreatorColumns(connection, "journal_vouchers");
 
     for (const voucher of vouchers) {
       const { date, narration, transactions } = voucher;
@@ -202,9 +204,9 @@ export const bulkCreateJournalVoucher = async (req, res) => {
       // Insert into main voucher table
       const [voucherResult] = await connection.query(
         `INSERT INTO journal_vouchers 
-        (companyId, ledgerId, date, narration, totalDebit, totalCredit)
-        VALUES (?, ?, ?, ?, ?, ?)`,
-        [companyId, ledgerIds, date, narration, totalDebit, totalCredit] // Note: ledgerIds might need better handling if it's supposed to be a single ID or JSON
+        (companyId, ledgerId, date, narration, totalDebit, totalCredit, created_by_user_id, created_by_employee_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [companyId, ledgerIds, date, narration, totalDebit, totalCredit, creator.userId, creator.employeeId]
       );
 
       const voucherId = voucherResult.insertId;

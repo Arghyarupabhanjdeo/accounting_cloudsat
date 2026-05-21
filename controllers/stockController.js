@@ -1,7 +1,9 @@
 import pool from "../db.js";
+import { ensureCreatorColumns, getCreatorFromRequest } from "../utils/creatorTracking.js";
 
 export const createStockList = async (req, res) => {
   const { companyId } = req.params;
+  const creator = getCreatorFromRequest(req);
   try {
     const {
       name,
@@ -26,6 +28,7 @@ export const createStockList = async (req, res) => {
         message: "companyId, name, and under are required fields.",
       });
     }
+    await ensureCreatorColumns(pool, "stocks");
 
     // Insert Query
     const [result] = await pool.query(
@@ -44,9 +47,11 @@ export const createStockList = async (req, res) => {
         hsn,
         openingBalanceQty,
         openingBalanceRate,
-        openingBalanceValue
+        openingBalanceValue,
+        created_by_user_id,
+        created_by_employee_id
       ) 
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         companyId,
         name,
@@ -62,6 +67,8 @@ export const createStockList = async (req, res) => {
         openingBalanceQty,
         openingBalanceRate,
         openingBalanceValue,
+        creator.userId,
+        creator.employeeId,
       ]
     );
 

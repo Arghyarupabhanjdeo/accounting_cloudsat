@@ -1,4 +1,5 @@
 import pool from "../db.js";
+import { ensureCreatorColumns, getCreatorFromRequest } from "../utils/creatorTracking.js";
 
 
 // ✅ Create Group (company-wise)
@@ -6,12 +7,14 @@ export const createGroup = async (req, res) => {
   try {
     const { companyId } = req.params;
     const { groupName, alias, under, nature, subLedger } = req.body;
+    const creator = getCreatorFromRequest(req);
 
     if (!companyId) return res.status(400).json({ message: "companyId is required" });
+    await ensureCreatorColumns(pool, "groups");
 
     const sql = `
-      INSERT INTO groups (groupName, companyId, aliasName, \`under\`, nature, subLedger)
-      VALUES (?, ?, ?, ?, ?, ?)
+      INSERT INTO groups (groupName, companyId, aliasName, \`under\`, nature, subLedger, created_by_user_id, created_by_employee_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
     await pool.execute(sql, [
@@ -21,6 +24,8 @@ export const createGroup = async (req, res) => {
       under,
       nature,
       subLedger,
+      creator.userId,
+      creator.employeeId,
     ]);
 
     res.json({ message: "Group created successfully!" });

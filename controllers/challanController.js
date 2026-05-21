@@ -1,4 +1,5 @@
 import pool from "../db.js";
+import { ensureCreatorColumns, getCreatorFromRequest } from "../utils/creatorTracking.js";
 
 /* =========================
    DASHBOARD SUMMARY
@@ -109,8 +110,10 @@ export const getChallanById = async (req, res) => {
 ========================= */
 export const addChallan = async (req, res) => {
   const { companyId } = req.params;
+  const creator = getCreatorFromRequest(req);
 
   try {
+    await ensureCreatorColumns(pool, "challans");
     const {
       challan_no,
       cpn,
@@ -144,9 +147,11 @@ export const addChallan = async (req, res) => {
         return_type,
         section,
         gstin,
-        remarks
+        remarks,
+        created_by_user_id,
+        created_by_employee_id
       )
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
       `,
       [
         companyId,
@@ -162,7 +167,9 @@ export const addChallan = async (req, res) => {
         return_type,
         section,
         gstin,
-        remarks
+        remarks,
+        creator.userId,
+        creator.employeeId
       ]
     );
 

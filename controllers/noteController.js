@@ -1,9 +1,12 @@
 import pool from "../db.js";
 import { generateNotePDF } from "../utils/notePdf.js";
+import { ensureCreatorColumns, getCreatorFromRequest } from "../utils/creatorTracking.js";
 
 export const createDebitNote = async (req, res) => {
   const { companyId } = req.params;
+  const creator = getCreatorFromRequest(req);
   try {
+    await ensureCreatorColumns(pool, "notes");
     const {
       voucherNo, date, partyLedger, purchaseLedger, partyDetails, dispatchDetails, consignorDetails = {}, narration, items,
       subtotal, gst_amount, igst_rate, cgst_rate, sgst_rate, igst_amount, cgst_amount, sgst_amount, grand_total
@@ -22,8 +25,9 @@ export const createDebitNote = async (req, res) => {
         billOfLading, billOfLadingDate, motorVehicleNo, dispatchDate, termsOfDelivery,
         consigneeSameAsBilling, consigneeName, consigneeGSTIN, consigneeAddress, consigneeState, 
         subtotal, gst_amount, igst_rate, cgst_rate, sgst_rate, igst_amount, cgst_amount, sgst_amount, grand_total,
-        consignorName, consignorGSTIN, consignorState, consignorPincode, consignorAddress, consignorEmail)
-       VALUES (?, ?, ?, ?, ?, ?, "debit", ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        consignorName, consignorGSTIN, consignorState, consignorPincode, consignorAddress, consignorEmail,
+        created_by_user_id, created_by_employee_id)
+       VALUES (?, ?, ?, ?, ?, ?, "debit", ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         companyId, voucherNo, date, partyLedger || null, purchaseLedger || null, narration,
         partyDetails?.mailingName, partyDetails?.address, partyDetails?.state, partyDetails?.country, partyDetails?.pincode,
@@ -38,7 +42,8 @@ export const createDebitNote = async (req, res) => {
         dispatchDetails?.consigneeAddress, dispatchDetails?.consigneeState,
         subtotal, gst_amount, igst_rate, cgst_rate, sgst_rate, igst_amount, cgst_amount, sgst_amount, grand_total,
         consignorDetails?.consignorName || null, consignorDetails?.consignorGSTIN || null, consignorDetails?.consignorState || null,
-        consignorDetails?.consignorPincode || null, consignorDetails?.consignorAddress || null, consignorDetails?.consignorEmail || null
+        consignorDetails?.consignorPincode || null, consignorDetails?.consignorAddress || null, consignorDetails?.consignorEmail || null,
+        creator.userId, creator.employeeId
       ]
     );
 
@@ -71,7 +76,9 @@ export const getDebitNote = async (req, res) => {
 
 export const createCreditNote = async (req, res) => {
   const { companyId } = req.params;
+  const creator = getCreatorFromRequest(req);
   try {
+    await ensureCreatorColumns(pool, "notes");
     const {
       voucherNo, date, partyLedger, purchaseLedger, partyDetails, dispatchDetails, consignorDetails = {}, narration, items,
       subtotal, gst_amount, igst_rate, cgst_rate, sgst_rate, igst_amount, cgst_amount, sgst_amount, grand_total
@@ -90,8 +97,9 @@ export const createCreditNote = async (req, res) => {
         billOfLading, billOfLadingDate, motorVehicleNo, dispatchDate, termsOfDelivery,
         consigneeSameAsBilling, consigneeName, consigneeGSTIN, consigneeAddress, consigneeState, 
         subtotal, gst_amount, igst_rate, cgst_rate, sgst_rate, igst_amount, cgst_amount, sgst_amount, grand_total,
-        consignorName, consignorGSTIN, consignorState, consignorPincode, consignorAddress, consignorEmail)
-       VALUES (?, ?, ?, ?, ?, ?, "credit", ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        consignorName, consignorGSTIN, consignorState, consignorPincode, consignorAddress, consignorEmail,
+        created_by_user_id, created_by_employee_id)
+       VALUES (?, ?, ?, ?, ?, ?, "credit", ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         companyId, voucherNo, date, partyLedger || null, purchaseLedger || null, narration,
         partyDetails?.mailingName, partyDetails?.address, partyDetails?.state, partyDetails?.country, partyDetails?.pincode,
@@ -106,7 +114,8 @@ export const createCreditNote = async (req, res) => {
         dispatchDetails?.consigneeAddress, dispatchDetails?.consigneeState,
         subtotal, gst_amount, igst_rate, cgst_rate, sgst_rate, igst_amount, cgst_amount, sgst_amount, grand_total,
         consignorDetails?.consignorName || null, consignorDetails?.consignorGSTIN || null, consignorDetails?.consignorState || null,
-        consignorDetails?.consignorPincode || null, consignorDetails?.consignorAddress || null, consignorDetails?.consignorEmail || null
+        consignorDetails?.consignorPincode || null, consignorDetails?.consignorAddress || null, consignorDetails?.consignorEmail || null,
+        creator.userId, creator.employeeId
       ]
     );
 

@@ -533,11 +533,13 @@ export const updateContraVoucher = async (req, res) => {
 
 export const bulkCreateContraVoucher = async (req, res) => {
   const { companyId, vouchers } = req.body;
+  const creator = getCreatorFromRequest(req);
 
   const conn = await pool.getConnection();
 
   try {
     await conn.beginTransaction();
+    await ensureCreatorColumns(conn, "contra_vouchers");
 
     for (const voucher of vouchers) {
       const {
@@ -560,8 +562,8 @@ export const bulkCreateContraVoucher = async (req, res) => {
       // Insert voucher header
       const [voucherResult] = await conn.query(
         `INSERT INTO contra_vouchers 
-          (companyId, voucherNo, date, narration, gstType, gstRate, gstAmount, totalAmount, grandTotal)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          (companyId, voucherNo, date, narration, gstType, gstRate, gstAmount, totalAmount, grandTotal, created_by_user_id, created_by_employee_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           companyId,
           voucherNo,
@@ -572,6 +574,8 @@ export const bulkCreateContraVoucher = async (req, res) => {
           gstAmount,
           totalAmount,
           grandTotal,
+          creator.userId,
+          creator.employeeId,
         ]
       );
 

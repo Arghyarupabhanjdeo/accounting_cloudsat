@@ -1,11 +1,13 @@
 // controllers/chequeController.js
 import pool from '../db.js';
+import { ensureCreatorColumns, getCreatorFromRequest } from "../utils/creatorTracking.js";
 // import { isValidDateString } from '../utils/validators.js'; // small helper (I'll include below)
 
 
 export const createCheque = async (req, res) => {
   const { companyId } = req.params;
   const data = req.body;
+  const creator = getCreatorFromRequest(req);
 
   // Basic server-side validation
   if (!data.chequeNumber || !data.amount) {
@@ -15,12 +17,13 @@ export const createCheque = async (req, res) => {
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
+    await ensureCreatorColumns(conn, "cheques");
 
     const q = `INSERT INTO cheques
       (companyId, chequeNumber, chequeDate, chequeType, amount, amountInWords, payeeName, payeeAddress, payeeContact, payeePAN,
        bankId, bankName, branchName, accountNumber, ifscCode, dateIssued, datePresented, dateCleared, status, statusDate,
-       purpose, referenceNumber, narration, tdsDeducted, tdsAmount, attachmentUrl, chequeImage, createdBy)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+       purpose, referenceNumber, narration, tdsDeducted, tdsAmount, attachmentUrl, chequeImage, createdBy, created_by_user_id, created_by_employee_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
 
     const values = [
       companyId,
@@ -50,7 +53,9 @@ export const createCheque = async (req, res) => {
       data.tdsAmount ? parseFloat(data.tdsAmount) : 0,
       data.attachmentUrl || null,
       data.chequeImage || null,
-      data.createdBy || null
+      data.createdBy || null,
+      creator.userId,
+      creator.employeeId
     ];
 
     const [result] = await conn.query(q, values);
@@ -315,11 +320,13 @@ export const changeChequeStatus = async (req, res) => {
 export const addCheque = async (req, res) => {
   const {companyId} = req.params ;
    const {chequeNo, chequeBookNumber ,status,type,amount ,dateIssued ,payeeName, remarks } = req.body;
+   const creator = getCreatorFromRequest(req);
   try {
+    await ensureCreatorColumns(pool, "chequeslist");
     await pool.query(`INSERT INTO chequeslist
-    (companyId, chequeNo, chequeBookNumber, status, type, amount, date_issued, payeeName, remarks)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [companyId, chequeNo, chequeBookNumber ,status,type,amount ,dateIssued ,payeeName, remarks ]);
+    (companyId, chequeNo, chequeBookNumber, status, type, amount, date_issued, payeeName, remarks, created_by_user_id, created_by_employee_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [companyId, chequeNo, chequeBookNumber ,status,type,amount ,dateIssued ,payeeName, remarks, creator.userId, creator.employeeId ]);
     res.json({ success: true, message: 'Cheque added to register successfully' });
   } catch (error) {
     console.log(error);

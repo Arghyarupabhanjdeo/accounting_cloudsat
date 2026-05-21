@@ -25,6 +25,8 @@ export const authMiddleware = (req, res, next) => {
 
     // Attach user info to request object
     req.user = decoded;
+    req.user.id = decoded.id ?? decoded.user_id ?? decoded.userId ?? null;
+    req.user.employee_id = decoded.employee_id ?? decoded.employeeId ?? decoded.employeeID ?? null;
 
     next(); // Continue to controller
   } catch (error) {

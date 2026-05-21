@@ -34,8 +34,37 @@ import invoiceRoutes from "./routes/invoiceRoutes.js";
 import challanRoutes from "./routes/challanRoutes.js";
 // import subscriptionRoutes from "./routes/subscriptionRoutes.js";
 import { initSubscriptionCron } from "./utils/subscriptionCron.js";
+import pool from "./db.js";
+import { ensureCreatorColumnsForTables } from "./utils/creatorTracking.js";
 
 const app = express();
+
+const creatorTrackedTables = [
+  "companies",
+  "groups",
+  "ledgers",
+  "trial_balance",
+  "stocks",
+  "bank_accounts",
+  "bank_transactions",
+  "cheques",
+  "chequeslist",
+  "contra_vouchers",
+  "payment_vouchers",
+  "receive_vouchers",
+  "journal_vouchers",
+  "sales_vouchers",
+  "purchase_vouchers",
+  "voucher_transactions",
+  "notes",
+  "manufacturing_journal",
+  "invoices",
+  "challans",
+];
+
+ensureCreatorColumnsForTables(pool, creatorTrackedTables).catch((error) => {
+  console.error("Creator tracking column setup failed:", error.message);
+});
 
 
 const allowOrigins = ["http://localhost:5173", "http://localhost:5174","http://localhost:3000", "https://accounting.csaap.com", "https://buildererp.csaap.com", "https://cloudsat.in/", "https://www.cloudsat.in/,", "https://hrmsapi.csaap.com","https://www.hrmsapi.csaap.com"];

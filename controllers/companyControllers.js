@@ -1,4 +1,5 @@
 import pool from "../db.js";
+import { ensureCreatorColumns, getCreatorFromRequest } from "../utils/creatorTracking.js";
 //  Get all companies
 export const getCompanies = async (req, res) => {
   const { userId } = req.params;
@@ -37,6 +38,8 @@ export const createCompany = async (req, res) => {
 
   try {
     const { name, email, gstRegistered, gstin } = req.body;
+    const creator = getCreatorFromRequest(req);
+    await ensureCreatorColumns(pool, "companies");
 
     // Build final data object
     const finalData = {
@@ -51,8 +54,8 @@ export const createCompany = async (req, res) => {
 
     const sql = `
       INSERT INTO companies 
-      (name, email, gstRegistered, gstin, userId) 
-      VALUES (?, ?, ?, ?, ?)
+      (name, email, gstRegistered, gstin, userId, created_by_user_id, created_by_employee_id) 
+      VALUES (?, ?, ?, ?, ?, ?, ?)
     `;
 
     const values = [
@@ -60,7 +63,9 @@ export const createCompany = async (req, res) => {
       finalData.email,
       finalData.gstRegistered,
       finalData.gstin,
-      finalData.userId
+      finalData.userId,
+      creator.userId,
+      creator.employeeId
     ];
 
     const [result] = await pool.query(sql, values);

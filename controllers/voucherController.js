@@ -1,4 +1,5 @@
 import pool from "../db.js";
+import { ensureCreatorColumns, getCreatorFromRequest } from "../utils/creatorTracking.js";
 
 
 
@@ -172,11 +173,13 @@ export const createVoucherTRANSACTION = async (req, res) => {
     transactions,
     items
   } = req.body;
+  const creator = getCreatorFromRequest(req);
 
   console.log("Received:", req.body);
  
 
   try {
+    await ensureCreatorColumns(pool, "voucher_transactions");
     let insertedRows = 0;
 
 
@@ -227,8 +230,8 @@ export const createVoucherTRANSACTION = async (req, res) => {
     let ledgerId = item.ledgerId
     const query = `
       INSERT INTO voucher_transactions
-      (companyId, voucherId, voucherType,ledgerId, fromLedger, toLedger, amount, \`date\`, narration)
-      VALUES (?, ?, ?,?, ?, ?, ?, ?, ?)
+      (companyId, voucherId, voucherType,ledgerId, fromLedger, toLedger, amount, \`date\`, narration, created_by_user_id, created_by_employee_id)
+      VALUES (?, ?, ?,?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
     const params = [
@@ -240,7 +243,9 @@ export const createVoucherTRANSACTION = async (req, res) => {
       toLedger,
       amount,
       date,
-      narration || ""
+      narration || "",
+      creator.userId,
+      creator.employeeId
     ];
 
     await pool.query(query, params);
@@ -272,8 +277,8 @@ export const createVoucherTRANSACTION = async (req, res) => {
       if (voucherType === "Contra") {
         query = `
           INSERT INTO voucher_transactions
-          (companyId, voucherId, voucherType, fromLedger, toLedger, amount, \`date\`,invoiceNo, narration)
-          VALUES (?, ?, ?, ?, ?, ?,?, ?, ?)
+          (companyId, voucherId, voucherType, fromLedger, toLedger, amount, \`date\`,invoiceNo, narration, created_by_user_id, created_by_employee_id)
+          VALUES (?, ?, ?, ?, ?, ?,?, ?, ?, ?, ?)
         `;
         params = [
           companyId,
@@ -284,7 +289,9 @@ export const createVoucherTRANSACTION = async (req, res) => {
           item.amount,
           date,
           voucherNo,
-          narration || ""
+          narration || "",
+          creator.userId,
+          creator.employeeId
         ];
       } else {
         const { itemName, itemQuantity } = item;
@@ -298,8 +305,8 @@ export const createVoucherTRANSACTION = async (req, res) => {
 
         query = `
           INSERT INTO voucher_transactions
-          (companyId, voucherId, voucherType, ledgerId, debit, credit, amount, itemName, itemQuantity, gst, \`date\`, narration, invoiceNo)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          (companyId, voucherId, voucherType, ledgerId, debit, credit, amount, itemName, itemQuantity, gst, \`date\`, narration, invoiceNo, created_by_user_id, created_by_employee_id)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `;
 
         params = [
@@ -315,7 +322,9 @@ export const createVoucherTRANSACTION = async (req, res) => {
           gstRow,
           date,
           narration || "",
-          invoiceNo || null
+          invoiceNo || null,
+          creator.userId,
+          creator.employeeId
         ];
       }
 

@@ -1,8 +1,9 @@
 
 import pool from "../db.js";
+import { ensureCreatorColumns, getCreatorFromRequest } from "../utils/creatorTracking.js";
 
 /* ================= CREATE INVOICE ================= */
-export const createInvoice = (req, res) => {
+export const createInvoice = async (req, res) => {
   const {
     invoice_no,
     customer,
@@ -16,21 +17,23 @@ export const createInvoice = (req, res) => {
     balance,
     status,
     paymentMethod,
-    notes,
-    createdBy
+    notes
   } = req.body;
+  const creator = getCreatorFromRequest(req);
 
-  const invoiceSql = `
-    INSERT INTO invoices
-    (invoice_no, customer_name, customer_email, customer_phone, customer_gstin,
-     customer_address, invoice_date, due_date, subtotal, tax_amount, total,
-     paid_amount, balance, status, payment_method, notes, created_by)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-  `;
+  try {
+    await ensureCreatorColumns(pool, "invoices");
 
-  pool.query(
-    invoiceSql,
-    [
+    const invoiceSql = `
+      INSERT INTO invoices
+      (invoice_no, customer_name, customer_email, customer_phone, customer_gstin,
+       customer_address, invoice_date, due_date, subtotal, tax_amount, total,
+       paid_amount, balance, status, payment_method, notes, created_by,
+       created_by_user_id, created_by_employee_id)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+    `;
+
+    const [result] = await pool.query(invoiceSql, [
       invoice_no,
       customer.name,
       customer.email,
@@ -47,34 +50,33 @@ export const createInvoice = (req, res) => {
       status,
       paymentMethod,
       notes,
-      createdBy
-    ],
-    (err, result) => {
-      if (err) return res.status(500).json(err);
+      creator.userId,
+      creator.userId,
+      creator.employeeId
+    ]);
 
-      const invoiceId = result.insertId;
+    const invoiceId = result.insertId;
 
-      const itemSql = `
-        INSERT INTO invoice_items
-        (invoice_id, description, quantity, rate, tax_rate, amount)
-        VALUES ?
-      `;
+    const itemSql = `
+      INSERT INTO invoice_items
+      (invoice_id, description, quantity, rate, tax_rate, amount)
+      VALUES ?
+    `;
 
-      const itemValues = items.map(item => [
-        invoiceId,
-        item.description,
-        item.quantity,
-        item.rate,
-        item.taxRate,
-        item.amount
-      ]);
+    const itemValues = items.map(item => [
+      invoiceId,
+      item.description,
+      item.quantity,
+      item.rate,
+      item.taxRate,
+      item.amount
+    ]);
 
-      pool.query(itemSql, [itemValues], err => {
-        if (err) return res.status(500).json(err);
-        res.json({ message: "Invoice created successfully" });
-      });
-    }
-  );
+    await pool.query(itemSql, [itemValues]);
+    res.json({ message: "Invoice created successfully" });
+  } catch (err) {
+    res.status(500).json(err);
+  }
 };
 
 /* ================= GET ALL INVOICES ================= */

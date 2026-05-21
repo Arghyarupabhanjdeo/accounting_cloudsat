@@ -155,11 +155,12 @@ export const createPurchaseVoucher = async (req, res) => {
       }
     }
 
+    await ensureCreatorColumns(conn, "voucher_transactions");
     await conn.query(
       `INSERT INTO voucher_transactions 
-       (companyId, ledgerId, voucherType, voucherId, debit, credit, date, accountType)
-       VALUES (?, ?, 'Purchase', ?, 0, ?, ?, ?)`,
-      [companyId, ledger, voucherId, grand_total, date, transactionAccountType]
+       (companyId, ledgerId, voucherType, voucherId, debit, credit, date, accountType, created_by_user_id, created_by_employee_id)
+       VALUES (?, ?, 'Purchase', ?, 0, ?, ?, ?, ?, ?)`,
+      [companyId, ledger, voucherId, grand_total, date, transactionAccountType, creator.userId, creator.employeeId]
     );
 
     // Insert items + Update Stock
@@ -907,6 +908,7 @@ export const getPurchaseVoucherItems = async (req, res) => {
 
 export const uploadFromExcel = async (req, res) => {
   const { companyId } = req.params;
+  const creator = getCreatorFromRequest(req);
   const conn = await pool.getConnection();
 
   try {
@@ -933,6 +935,7 @@ export const uploadFromExcel = async (req, res) => {
     }
 
     await conn.beginTransaction();
+    await ensureCreatorColumns(conn, "purchase_vouchers");
 
     let insertedVouchers = 0;
     let insertedItems = 0;
@@ -991,8 +994,8 @@ export const uploadFromExcel = async (req, res) => {
       const [voucherRes] = await conn.query(
         `
         INSERT INTO purchase_vouchers
-        (companyId, ledgerId, date, customer, subtotal, gst_percentage, gst_amount, grand_total, narration)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        (companyId, ledgerId, date, customer, subtotal, gst_percentage, gst_amount, grand_total, narration, created_by_user_id, created_by_employee_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `,
         [
           companyId,
@@ -1004,6 +1007,8 @@ export const uploadFromExcel = async (req, res) => {
           gst_amount,
           grand_total,
           v.narration || "",
+          creator.userId,
+          creator.employeeId,
         ]
       );
 
@@ -1097,11 +1102,13 @@ export const uploadFromExcel = async (req, res) => {
 
 export const bulkCreatePurchaseVoucher = async (req, res) => {
   const { companyId, vouchers } = req.body; // vouchers is an array of voucher objects
+  const creator = getCreatorFromRequest(req);
 
   const conn = await pool.getConnection();
 
   try {
     await conn.beginTransaction();
+    await ensureCreatorColumns(conn, "purchase_vouchers");
 
     for (const voucher of vouchers) {
       const {
@@ -1122,8 +1129,8 @@ export const bulkCreatePurchaseVoucher = async (req, res) => {
       // 1️⃣ Insert voucher
       const [result] = await conn.query(
         `INSERT INTO purchase_vouchers 
-        (companyId, ledgerId, date, customer, subtotal, gst_percentage, gst_amount, grand_total, narration, igst, cgst, sgst)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        (companyId, ledgerId, date, customer, subtotal, gst_percentage, gst_amount, grand_total, narration, igst, cgst, sgst, created_by_user_id, created_by_employee_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           companyId,
           ledger,
@@ -1136,7 +1143,9 @@ export const bulkCreatePurchaseVoucher = async (req, res) => {
           narration,
           igst || 0,
           cgst || 0,
-          sgst || 0
+          sgst || 0,
+          creator.userId,
+          creator.employeeId
         ]
       );
 
