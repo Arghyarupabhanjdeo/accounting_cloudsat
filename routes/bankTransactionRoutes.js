@@ -9,7 +9,7 @@ import {
 const router = express.Router();
 
 router.post("/:companyId/create", createTransaction);
-router.get("/:accountId/all", getTransactions);
+router.get("/:accountId", getTransactions);
 router.put("/:id/update", updateTransaction);
 router.delete("/:id/delete", deleteTransaction);
 

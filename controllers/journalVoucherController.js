@@ -42,8 +42,10 @@ export const createJournalVoucher = async (req, res) => {
     0
   );
 
-  const ledgerIds = transactions.map(t => t.ledgerId);
+  // const ledgerIds = transactions.map(t => t.ledgerId);
 
+  // Store ledger IDs as a comma-separated string to match DB column type
+  const ledgerIds = transactions.map(t => t.ledgerId).join(',');
 
   // if (totalDebit !== totalCredit) {
   //   return res.status(400).json({
@@ -73,18 +75,24 @@ export const createJournalVoucher = async (req, res) => {
 
     // Insert each transaction row
     for (const t of transactions) {
-      await connection.query(
-        `INSERT INTO journal_transactions 
-        (companyId ,voucherId, particulars, debit, credit)
-        VALUES (? ,?, ?, ?, ?)`,
-        [
-          companyId,
-          voucherId,
-          t.particulars,
-          parseFloat(t.debit) || 0,
-          parseFloat(t.credit) || 0,
-        ]
-      );
+   await connection.query(
+  `INSERT INTO journal_transactions 
+  (companyId, ledgerId, voucherId, particulars, debit, credit)
+  VALUES (?, ?, ?, ?, ?, ?)`,
+  [
+    Number(companyId),
+    Number(t.ledgerId),
+    Number(voucherId),
+
+    await getAccountName(
+      t.ledgerId || t.particulars,
+      companyId
+    ),
+
+    parseFloat(t.debit) || 0,
+    parseFloat(t.credit) || 0,
+  ]
+);
     }
 
     await connection.commit();
@@ -134,6 +142,32 @@ export const createJournalVoucher = async (req, res) => {
     connection.release();
     console.error(error);
     res.status(500).json({ message: "Server Error", error });
+  }
+};
+
+export const getNextJournalVoucherNumber = async (req, res) => {
+  try {
+
+    const [[result]] = await pool.query(`
+      SELECT AUTO_INCREMENT as nextId
+      FROM information_schema.TABLES
+      WHERE TABLE_SCHEMA = DATABASE()
+      AND TABLE_NAME = 'journal_vouchers'
+    `);
+
+    res.json({
+      success: true,
+      voucherNo: result?.nextId || 1
+    });
+
+  } catch (error) {
+
+    console.error(error);
+
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch next voucher number"
+    });
   }
 };
 
@@ -213,20 +247,24 @@ export const bulkCreateJournalVoucher = async (req, res) => {
 
       // Insert each transaction row
       for (const t of transactions) {
-        await connection.query(
-          `INSERT INTO journal_transactions 
-          (companyId, voucherId, particulars, debit, credit)
-          VALUES (?, ?, ?, ?, ?)`,
-          [
-            companyId,
-            voucherId, // Corrected from t.particulars which was used in createJournalVoucher logic for some reason? 
-            // Wait, existing check: `VALUES (? ,?, ?, ?, ?)` -> `[companyId, voucherId, t.particulars, ...]`
-            // My code: `[companyId, voucherId, t.particulars, ...]`
-            t.particulars,
-            parseFloat(t.debit) || 0,
-            parseFloat(t.credit) || 0,
-          ]
-        );
+      await connection.query(
+  `INSERT INTO journal_transactions 
+  (companyId, ledgerId, voucherId, particulars, debit, credit)
+  VALUES (?, ?, ?, ?, ?, ?)`,
+  [
+    Number(companyId),
+    Number(t.ledgerId),
+    Number(voucherId),
+
+    await getAccountName(
+      t.ledgerId || t.particulars,
+      companyId
+    ),
+
+    parseFloat(t.debit) || 0,
+    parseFloat(t.credit) || 0,
+  ]
+);
       }
     }
 
@@ -298,15 +336,21 @@ export const updateJournalVoucher = async (req, res) => {
     for (const t of transactions) {
       await connection.query(
         `INSERT INTO journal_transactions 
-        (companyId, voucherId, particulars, debit, credit)
+        (companyId, ledgerId, voucherId, particulars, debit, credit)
         VALUES (?, ?, ?, ?, ?)`,
-        [
-          voucher.companyId,
-          id,
-          t.ledgerId || t.particulars,
-          parseFloat(t.debit) || 0,
-          parseFloat(t.credit) || 0,
-        ]
+       [
+  voucher.companyId,
+  Number(t.ledgerId),
+  id,
+
+  await getAccountName(
+    t.ledgerId || t.particulars,
+    voucher.companyId
+  ),
+
+  parseFloat(t.debit) || 0,
+  parseFloat(t.credit) || 0,
+]
       );
     }
 

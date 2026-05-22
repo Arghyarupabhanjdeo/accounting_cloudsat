@@ -108,3 +108,47 @@ export const getAllTransactions = async (req, res) => {
     res.status(500).json({ message: "Internal Server Error" });
   }
 };
+
+// 💰 Get Cash Ledger Transactions (by companyId and ledgerId)
+export const getCashTransactions = async (req, res) => {
+  const { companyId, ledgerId } = req.params;
+
+  try {
+    // Fetch transactions from voucher_transactions for the specific cash ledger
+    const [rows] = await pool.query(
+      `SELECT 
+        vt.id, 
+        vt.date, 
+        CONCAT(vt.voucherType, ' Voucher: ', IFNULL(v.narration, '')) as description, 
+        CASE WHEN vt.debit > 0 THEN 'credit' ELSE 'debit' END as transactionType, 
+        CASE WHEN vt.debit > 0 THEN vt.debit ELSE vt.credit END as amount, 
+        vt.voucherType,
+        vt.voucherId,
+        v.narration,
+        'voucher' as source
+       FROM voucher_transactions vt
+       LEFT JOIN journal_vouchers v ON vt.voucherId = v.id AND vt.voucherType = 'Journal'
+       WHERE vt.ledgerId = ? AND vt.companyId = ?
+       UNION ALL
+       SELECT 
+        vt.id, 
+        vt.date, 
+        CONCAT(vt.voucherType, ' Voucher') as description, 
+        CASE WHEN vt.debit > 0 THEN 'credit' ELSE 'debit' END as transactionType, 
+        CASE WHEN vt.debit > 0 THEN vt.debit ELSE vt.credit END as amount, 
+        vt.voucherType,
+        vt.voucherId,
+        NULL as narration,
+        'voucher' as source
+       FROM voucher_transactions vt
+       WHERE vt.ledgerId = ? AND vt.companyId = ? AND vt.voucherType != 'Journal'
+       ORDER BY date DESC`,
+      [ledgerId, companyId, ledgerId, companyId]
+    );
+
+    res.json({ success: true, transactions: rows });
+  } catch (err) {
+    console.error("Get Cash Transactions Error:", err);
+    res.status(500).json({ success: false, message: "Internal Server Error" });
+  }
+};

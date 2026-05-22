@@ -202,7 +202,9 @@ console.log(req.body);
        2️⃣ CONSUME RAW MATERIAL STOCK
        ================================== */
     for (const c of components) {
-      const totalQuantity = finishedQty * c.qty;
+    const totalQuantity =
+  (Number(finishedQty) || 0) *
+  (Number(c.qty) || 0);
 
       // Insert component consumption
       await conn.query(
@@ -214,10 +216,10 @@ console.log(req.body);
           companyId,
           c.itemName,
           c.godown,
-          c.qty,
-          totalQuantity,
-          c.rate,
-          c.amount,
+        Number(c.qty) || 0,
+Number(totalQuantity) || 0,
+Number(c.rate) || 0,
+Number(c.amount) || 0,
         ]
       );
 
@@ -236,7 +238,11 @@ console.log(req.body);
         `UPDATE stocks 
          SET openingBalanceQty = openingBalanceQty - ? 
          WHERE companyId = ? AND name = ?`,
-        [c.qty, companyId, c.itemName]
+      [
+  Number(totalQuantity) || 0,
+  companyId,
+  c.itemName
+]
       );
     }
 

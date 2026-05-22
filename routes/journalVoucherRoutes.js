@@ -6,12 +6,14 @@ import {
   bulkCreateJournalVoucher,
   updateJournalVoucher,
   deleteJournalVoucher,
-  downloadJournalVoucherPDF
+  downloadJournalVoucherPDF,
+  getNextJournalVoucherNumber
 } from "../controllers/journalVoucherController.js";
 
 const router = express.Router();
 
 router.post("/create/:companyId", createJournalVoucher);
+router.get("/next-voucher-no", getNextJournalVoucherNumber);
 router.get("/all/:companyId", getJournalVouchers);
 router.get("/:id", getJournalVoucherById);
 router.post("/bulk-create", bulkCreateJournalVoucher);

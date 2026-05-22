@@ -1,6 +1,7 @@
 import PDFDocument from "pdfkit";
 import fs from "fs";
 import path from "path";
+import pool from "../db.js";
 
 /**
  * Converts a number into its word representation (Indian numbering system).
@@ -40,7 +41,7 @@ const numberToWords = (num) => {
  * Generates a professional boxy-format PDF for a Receipt Voucher.
  */
 export const generateReceiptPDF = async (data, filePath) => {
-    return new Promise((resolve, reject) => {
+ return new Promise(async (resolve, reject) => {
         try {
             const fullPath = path.join(process.cwd(), filePath);
             const dir = path.dirname(fullPath);
@@ -52,7 +53,52 @@ export const generateReceiptPDF = async (data, filePath) => {
             const stream = fs.createWriteStream(fullPath);
             doc.pipe(stream);
 
-            const { voucherNo, date, total, items, narration, customer } = data;
+            const { voucherNo, date, total, items, narration, customer,  receiptAccountId } = data;
+           
+           let accountName = customer || receiptAccountId || "N/A";
+
+try {
+
+  // BANK ACCOUNT
+  if (String(accountName).startsWith("bank_")) {
+
+    const bankId = accountName.replace("bank_", "");
+
+    const [banks] = await pool.query(
+      "SELECT * FROM bank_accounts WHERE id = ?",
+      [bankId]
+    );
+
+    if (banks.length > 0) {
+      accountName = banks[0].bankName
+        ? `${banks[0].accountName} (${banks[0].bankName})`
+        : banks[0].accountName;
+    }
+  }
+
+  // CASH LEDGER
+  else if (String(accountName).startsWith("ledger_")) {
+
+    const ledgerId = accountName.replace("ledger_", "");
+
+    const [ledgers] = await pool.query(
+      "SELECT * FROM ledgers WHERE id = ?",
+      [ledgerId]
+    );
+
+    if (ledgers.length > 0) {
+      accountName = ledgers[0].name || ledgers[0].ledgerName;
+    }
+  }
+
+  // NORMAL CASH
+  else if (accountName === "cash") {
+    accountName = "Cash";
+  }
+
+} catch (err) {
+  console.error("PDF Account Fetch Error:", err);
+}
             const companyName = "Cloudsat Private Limited";
 
             /* ================= HEADER ================= */
@@ -71,7 +117,7 @@ export const generateReceiptPDF = async (data, filePath) => {
 
             /* ================= ACCOUNT INFO ================= */
             doc.fontSize(10).font("Helvetica-Bold").text("Account:", 40, doc.y);
-            doc.font("Helvetica").text(customer || "N/A", 90, doc.y - 12);
+           doc.font("Helvetica").text(accountName || "N/A", 90, doc.y - 12);
             doc.moveDown(1);
 
             /* ================= TABLE HEADER ================= */
