@@ -32,12 +32,12 @@ export const createDebitNote = async (req, res) => {
         companyId, voucherNo, date, partyLedger || null, purchaseLedger || null, narration,
         partyDetails?.mailingName, partyDetails?.address, partyDetails?.state, partyDetails?.country, partyDetails?.pincode,
         partyDetails?.gstRegistrationType, partyDetails?.gstin, partyDetails?.placeOfSupply,
-        dispatchDetails?.deliveryNoteNo, dispatchDetails?.originalInvoiceDate, dispatchDetails?.originalInvoiceNo,
-        dispatchDetails?.otherReferences, dispatchDetails?.referenceNo, dispatchDetails?.referenceDate,
-        dispatchDetails?.buyerOrderNo, dispatchDetails?.buyerOrderDate, dispatchDetails?.dispatchDocNo,
-        dispatchDetails?.dispatchedThrough, dispatchDetails?.destination, dispatchDetails?.carrierName,
-        dispatchDetails?.billOfLading, dispatchDetails?.billOfLadingDate, dispatchDetails?.motorVehicleNo,
-        dispatchDetails?.dispatchDate, dispatchDetails?.termsOfDelivery,
+        dispatchDetails?.deliveryNoteNo || null, dispatchDetails?.originalInvoiceDate || null, dispatchDetails?.originalInvoiceNo || null,
+        dispatchDetails?.otherReferences || null, dispatchDetails?.referenceNo || null, dispatchDetails?.referenceDate || null,
+        dispatchDetails?.buyerOrderNo || null, dispatchDetails?.buyerOrderDate || null, dispatchDetails?.dispatchDocNo || null,
+        dispatchDetails?.dispatchedThrough || null, dispatchDetails?.destination || null, dispatchDetails?.carrierName || null,
+        dispatchDetails?.billOfLading || null, dispatchDetails?.billOfLadingDate || null, dispatchDetails?.motorVehicleNo || null,
+        dispatchDetails?.dispatchDate || null, dispatchDetails?.termsOfDelivery || null,
         dispatchDetails?.consigneeSameAsBilling ? 1 : 0, dispatchDetails?.consigneeName, dispatchDetails?.consigneeGSTIN,
         dispatchDetails?.consigneeAddress, dispatchDetails?.consigneeState,
         subtotal, gst_amount, igst_rate, cgst_rate, sgst_rate, igst_amount, cgst_amount, sgst_amount, grand_total,
@@ -88,6 +88,9 @@ export const createCreditNote = async (req, res) => {
       return res.status(400).json({ success: false, message: "Items are required" });
     }
 
+    // Convert empty strings to null for date fields
+    const sanitizeDate = (val) => !val || val === '' ? null : val;
+
     const [note] = await pool.query(
       `INSERT INTO notes 
        (companyId, voucherNo, date, PartyLedger, PurchaseLedger, narration, note_type,
@@ -104,12 +107,12 @@ export const createCreditNote = async (req, res) => {
         companyId, voucherNo, date, partyLedger || null, purchaseLedger || null, narration,
         partyDetails?.mailingName, partyDetails?.address, partyDetails?.state, partyDetails?.country, partyDetails?.pincode,
         partyDetails?.gstRegistrationType, partyDetails?.gstin, partyDetails?.placeOfSupply,
-        dispatchDetails?.deliveryNoteNo, dispatchDetails?.originalInvoiceDate, dispatchDetails?.originalInvoiceNo,
-        dispatchDetails?.otherReferences, dispatchDetails?.referenceNo, dispatchDetails?.referenceDate,
-        dispatchDetails?.buyerOrderNo, dispatchDetails?.buyerOrderDate, dispatchDetails?.dispatchDocNo,
-        dispatchDetails?.dispatchedThrough, dispatchDetails?.destination, dispatchDetails?.carrierName,
-        dispatchDetails?.billOfLading, dispatchDetails?.billOfLadingDate, dispatchDetails?.motorVehicleNo,
-        dispatchDetails?.dispatchDate, dispatchDetails?.termsOfDelivery,
+        dispatchDetails?.deliveryNoteNo || null, sanitizeDate(dispatchDetails?.originalInvoiceDate), dispatchDetails?.originalInvoiceNo || null,
+        dispatchDetails?.otherReferences || null, dispatchDetails?.referenceNo || null, sanitizeDate(dispatchDetails?.referenceDate),
+        dispatchDetails?.buyerOrderNo || null, sanitizeDate(dispatchDetails?.buyerOrderDate), dispatchDetails?.dispatchDocNo || null,
+        dispatchDetails?.dispatchedThrough || null, dispatchDetails?.destination || null, dispatchDetails?.carrierName || null,
+        dispatchDetails?.billOfLading || null, sanitizeDate(dispatchDetails?.billOfLadingDate), dispatchDetails?.motorVehicleNo || null,
+        sanitizeDate(dispatchDetails?.dispatchDate), dispatchDetails?.termsOfDelivery || null,
         dispatchDetails?.consigneeSameAsBilling ? 1 : 0, dispatchDetails?.consigneeName, dispatchDetails?.consigneeGSTIN,
         dispatchDetails?.consigneeAddress, dispatchDetails?.consigneeState,
         subtotal, gst_amount, igst_rate, cgst_rate, sgst_rate, igst_amount, cgst_amount, sgst_amount, grand_total,
@@ -233,6 +236,9 @@ export const updateDebitNote = async (req, res) => {
       subtotal, gst_amount, igst_rate, cgst_rate, sgst_rate, igst_amount, cgst_amount, sgst_amount, grand_total
     } = req.body;
 
+    // Convert empty strings to null for date fields
+    const sanitizeDate = (val) => !val || val === '' ? null : val;
+
     await pool.query(
       `UPDATE notes SET 
         voucherNo=?, date=?, PartyLedger=?, PurchaseLedger=?, narration=?,
@@ -248,12 +254,12 @@ export const updateDebitNote = async (req, res) => {
         voucherNo, date, partyLedger || null, purchaseLedger || null, narration,
         partyDetails?.mailingName, partyDetails?.address, partyDetails?.state, partyDetails?.country, partyDetails?.pincode,
         partyDetails?.gstRegistrationType, partyDetails?.gstin, partyDetails?.placeOfSupply,
-        dispatchDetails?.deliveryNoteNo, dispatchDetails?.originalInvoiceDate, dispatchDetails?.originalInvoiceNo,
-        dispatchDetails?.otherReferences, dispatchDetails?.referenceNo, dispatchDetails?.referenceDate,
-        dispatchDetails?.buyerOrderNo, dispatchDetails?.buyerOrderDate, dispatchDetails?.dispatchDocNo,
-        dispatchDetails?.dispatchedThrough, dispatchDetails?.destination, dispatchDetails?.carrierName,
-        dispatchDetails?.billOfLading, dispatchDetails?.billOfLadingDate, dispatchDetails?.motorVehicleNo,
-        dispatchDetails?.dispatchDate, dispatchDetails?.termsOfDelivery,
+        dispatchDetails?.deliveryNoteNo || null, sanitizeDate(dispatchDetails?.originalInvoiceDate), dispatchDetails?.originalInvoiceNo || null,
+        dispatchDetails?.otherReferences || null, dispatchDetails?.referenceNo || null, sanitizeDate(dispatchDetails?.referenceDate),
+        dispatchDetails?.buyerOrderNo || null, sanitizeDate(dispatchDetails?.buyerOrderDate), dispatchDetails?.dispatchDocNo || null,
+        dispatchDetails?.dispatchedThrough || null, dispatchDetails?.destination || null, dispatchDetails?.carrierName || null,
+        dispatchDetails?.billOfLading || null, sanitizeDate(dispatchDetails?.billOfLadingDate), dispatchDetails?.motorVehicleNo || null,
+        sanitizeDate(dispatchDetails?.dispatchDate), dispatchDetails?.termsOfDelivery || null,
         dispatchDetails?.consigneeSameAsBilling ? 1 : 0, dispatchDetails?.consigneeName, dispatchDetails?.consigneeGSTIN,
         dispatchDetails?.consigneeAddress, dispatchDetails?.consigneeState,
         subtotal, gst_amount, igst_rate, cgst_rate, sgst_rate, igst_amount, cgst_amount, sgst_amount, grand_total,
@@ -287,6 +293,9 @@ export const updateCreditNote = async (req, res) => {
       subtotal, gst_amount, igst_rate, cgst_rate, sgst_rate, igst_amount, cgst_amount, sgst_amount, grand_total
     } = req.body;
 
+    // Convert empty strings to null for date fields
+    const sanitizeDate = (val) => !val || val === '' ? null : val;
+
     await pool.query(
       `UPDATE notes SET 
         voucherNo=?, date=?, PartyLedger=?, PurchaseLedger=?, narration=?,
@@ -302,12 +311,12 @@ export const updateCreditNote = async (req, res) => {
         voucherNo, date, partyLedger || null, purchaseLedger || null, narration,
         partyDetails?.mailingName, partyDetails?.address, partyDetails?.state, partyDetails?.country, partyDetails?.pincode,
         partyDetails?.gstRegistrationType, partyDetails?.gstin, partyDetails?.placeOfSupply,
-        dispatchDetails?.deliveryNoteNo, dispatchDetails?.originalInvoiceDate, dispatchDetails?.originalInvoiceNo,
-        dispatchDetails?.otherReferences, dispatchDetails?.referenceNo, dispatchDetails?.referenceDate,
-        dispatchDetails?.buyerOrderNo, dispatchDetails?.buyerOrderDate, dispatchDetails?.dispatchDocNo,
-        dispatchDetails?.dispatchedThrough, dispatchDetails?.destination, dispatchDetails?.carrierName,
-        dispatchDetails?.billOfLading, dispatchDetails?.billOfLadingDate, dispatchDetails?.motorVehicleNo,
-        dispatchDetails?.dispatchDate, dispatchDetails?.termsOfDelivery,
+        dispatchDetails?.deliveryNoteNo || null, sanitizeDate(dispatchDetails?.originalInvoiceDate), dispatchDetails?.originalInvoiceNo || null,
+        dispatchDetails?.otherReferences || null, dispatchDetails?.referenceNo || null, sanitizeDate(dispatchDetails?.referenceDate),
+        dispatchDetails?.buyerOrderNo || null, sanitizeDate(dispatchDetails?.buyerOrderDate), dispatchDetails?.dispatchDocNo || null,
+        dispatchDetails?.dispatchedThrough || null, dispatchDetails?.destination || null, dispatchDetails?.carrierName || null,
+        dispatchDetails?.billOfLading || null, sanitizeDate(dispatchDetails?.billOfLadingDate), dispatchDetails?.motorVehicleNo || null,
+        sanitizeDate(dispatchDetails?.dispatchDate), dispatchDetails?.termsOfDelivery || null,
         dispatchDetails?.consigneeSameAsBilling ? 1 : 0, dispatchDetails?.consigneeName, dispatchDetails?.consigneeGSTIN,
         dispatchDetails?.consigneeAddress, dispatchDetails?.consigneeState,
         subtotal, gst_amount, igst_rate, cgst_rate, sgst_rate, igst_amount, cgst_amount, sgst_amount, grand_total,

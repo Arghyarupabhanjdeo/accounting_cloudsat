@@ -166,7 +166,7 @@ export const createReceiveVoucher = async (req, res) => {
         `
     UPDATE ledgers 
     SET closingBalance = COALESCE(closingBalance, 0) + ?
-    WHERE name = ? AND companyId = ?
+  WHERE id = ? AND companyId = ?
     `,
         [amount, ledgerId, companyId]
       );

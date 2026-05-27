@@ -43,7 +43,7 @@ export const getBankAccounts = async (req, res) => {
     
   try {
     const [rows] = await pool.query(
-      `SELECT * FROM bank_accounts WHERE companyId = ?`, 
+      `SELECT * FROM bank_accounts WHERE companyId = ? ORDER BY id DESC`, 
       [companyId]
     );
   console.log(rows);

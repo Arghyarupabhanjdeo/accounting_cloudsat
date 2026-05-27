@@ -31,6 +31,18 @@ const getAccountName = async (ledgerId, companyId) => {
   }
 };
 
+const buildCompanyLocation = (company = {}) => {
+  const parts = [
+    company.address,
+    company.city,
+    company.state,
+    company.pinCode || company.pincode,
+    company.country,
+  ].filter(Boolean);
+
+  return parts.join(", ");
+};
+
 const updateAccountBalance = async (connOrPool, accountId, companyId, amount, isAddition) => {
   if (!accountId) return;
   const numericAmount = parseFloat(amount) || 0;
@@ -179,7 +191,17 @@ export const createContraVoucher = async (req, res) => {
       `UPDATE contra_vouchers SET created_by_user_id = ?, created_by_employee_id = ? WHERE id = ?`,
       [creator.userId, creator.employeeId, voucherId]
     );
+const normalizeLedgerId = (id) => {
+  if (!id) return null;
 
+  if (id === "cash") return 0;
+
+  if (typeof id === "string" && id.startsWith("bank_")) {
+    return parseInt(id.split("_")[1], 10);
+  }
+
+  return parseInt(id, 10) || id;
+};
     // Process each transaction
     for (let t of transactions) {
 
@@ -188,7 +210,13 @@ export const createContraVoucher = async (req, res) => {
         `INSERT INTO contra_transactions 
            (voucherId, fromAccount, toAccount, amount, narration)
          VALUES (?, ?, ?, ?, ?)`,
-        [voucherId, t.fromAccount, t.toAccount, t.amount, t.narration]
+[
+  voucherId,
+  normalizeLedgerId(t.fromAccount),
+  normalizeLedgerId(t.toAccount),
+  t.amount,
+  t.narration
+]
       );
 
       // 2️⃣ UPDATE ledger balances
@@ -278,9 +306,16 @@ export const getContraVouchers = async (req, res) => {
       [voucherIds]
     );
 
+    const [[company]] = await pool.query(
+      `SELECT * FROM companies WHERE id = ?`,
+      [companyId]
+    );
+
     // 3️⃣ Merge transactions into each voucher
     const finalData = vouchers.map((voucher) => ({
       ...voucher,
+      companyName: company?.name || "",
+      companyLocation: buildCompanyLocation(company),
       transactions: transactions.filter(
         (t) => t.voucherId === voucher.id
       ),

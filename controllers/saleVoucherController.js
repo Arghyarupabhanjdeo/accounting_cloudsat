@@ -68,10 +68,22 @@ export const createSalesVoucher = async (req, res) => {
   try {
     await ensureCreatorColumns(connection, "sales_vouchers");
     /* ================= SENDER/COMPANY INFO ================= */
-    const [companyRows] = await connection.query(
-      `SELECT name, address, pinCode, gstin, state, email, mobile FROM companies WHERE id = ?`,
-      [companyId]
-    );
+   const [companyRows] = await connection.query(
+  `SELECT 
+      name,
+      address,
+      city,
+      state,
+      stateCode,
+      country,
+      pinCode,
+      gstin,
+      email,
+      mobile
+   FROM companies 
+   WHERE id = ?`,
+  [companyId]
+);
     const company = companyRows[0] || {};
 
     /* ================= E-WAY BILL & FALLBACKS ================= */
@@ -326,7 +338,9 @@ export const createSalesVoucher = async (req, res) => {
       sender: {
         company_name: consignorName || sender.name || "",
         address: consignorAddress || sender.address || "",
-        city: sender.city || "",
+       city: sender.city || "",
+state_code: sender.stateCode || "",
+country: sender.country || "",
         pincode: consignorPincode || sender.pinCode || "",
         gst: consignorGSTIN || sender.gstin || "",
         state_name: consignorState || sender.state || "",

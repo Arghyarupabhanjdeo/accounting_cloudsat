@@ -133,10 +133,19 @@ export const generateDocumentPDF = async (data, type, fileName, subDir) => {
             doc.fontSize(11).font("Helvetica-Bold").text(data.sender.company_name || "Cloudsat Private Limited", MARGIN + 5, headerStartY + 5);
 
             let sellerAddrY = headerStartY + 18;
-            let sellerAddressStr = data.sender.address || "";
-            if (data.sender.city) sellerAddressStr += (sellerAddressStr ? ", " : "") + data.sender.city;
-            if (data.sender.pincode) sellerAddressStr += (sellerAddressStr ? " - " : "") + data.sender.pincode;
+           let sellerAddressStr = data.sender.address || "";
 
+if (data.sender.city)
+  sellerAddressStr += (sellerAddressStr ? ", " : "") + data.sender.city;
+
+if (data.sender.state_name)
+  sellerAddressStr += (sellerAddressStr ? ", " : "") + data.sender.state_name;
+
+if (data.sender.country)
+  sellerAddressStr += (sellerAddressStr ? ", " : "") + data.sender.country;
+
+if (data.sender.pincode)
+  sellerAddressStr += (sellerAddressStr ? " - " : "") + data.sender.pincode;
             doc.fontSize(8).font("Helvetica").text(sellerAddressStr, MARGIN + 5, sellerAddrY, { width: (CONTENT_WIDTH * 0.5) - 10 });
             sellerAddrY = doc.y;
 
@@ -148,7 +157,10 @@ export const generateDocumentPDF = async (data, type, fileName, subDir) => {
             }
             if (data.sender.state_name) {
                 doc.fontSize(8).font("Helvetica-Bold").text("State Name : ", MARGIN + 5, currentLeftY, { continued: true });
-                doc.font("Helvetica").text(`${data.sender.state_name}, Code : `);
+                // doc.font("Helvetica").text(`${data.sender.state_name}, Code : `);
+             doc.font("Helvetica").text(
+  `${data.sender.state_name || ""}`
+);
                 currentLeftY = doc.y;
             }
 

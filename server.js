@@ -29,6 +29,7 @@ import checkRoutes from "./routes/chequeRoutes.js";
 import gstr2aRoutes from "./routes/gstr2aRoutes.js";
 import gstr2bRoutes from "./routes/gstr2bRoutes.js";
 import gstr3bRoutes from "./routes/gstr3bRoutes.js";
+import superAdminAccountingRoutes from "./routes/superAdminAccountingRoutes.js";
 
 import invoiceRoutes from "./routes/invoiceRoutes.js";
 import challanRoutes from "./routes/challanRoutes.js";
@@ -122,6 +123,7 @@ app.use("/api/v1/gstr1", gstr1Routes);
 app.use("/api/v1/gstr2a", gstr2aRoutes);
 app.use("/api/v1/gstr2b", gstr2bRoutes);
 app.use("/api/gstr3b", gstr3bRoutes);
+app.use("/api/v1/superadmin-accounting", superAdminAccountingRoutes);
 
 
 app.use("/api/v1/invoice", invoiceRoutes);
