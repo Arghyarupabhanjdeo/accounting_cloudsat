@@ -3,7 +3,40 @@ import fs from "fs";
 import path from "path";
 import { generateContraVoucherPDF } from "../utils/contraVoucherPdfUtils.js";
 import { ensureCreatorColumns, getCreatorFromRequest } from "../utils/creatorTracking.js";
+const normalizeLedgerId = (id) => {
 
+  if (
+    id === null ||
+    id === undefined ||
+    id === ""
+  ) {
+    return null;
+  }
+
+  // CASH
+  if (
+    id === "cash" ||
+    id === 0 ||
+    id === "0"
+  ) {
+    return 0;
+  }
+
+  // BANK ACCOUNT
+  if (
+    typeof id === "string" &&
+    id.startsWith("bank_")
+  ) {
+
+    return parseInt(
+      id.split("_")[1],
+      10
+    );
+  }
+
+  // NORMAL LEDGER
+  return parseInt(id, 10);
+};
 const getAccountName = async (ledgerId, companyId) => {
   if (!ledgerId) return "N/A";
   if (ledgerId === "cash") return "Cash";
@@ -191,17 +224,17 @@ export const createContraVoucher = async (req, res) => {
       `UPDATE contra_vouchers SET created_by_user_id = ?, created_by_employee_id = ? WHERE id = ?`,
       [creator.userId, creator.employeeId, voucherId]
     );
-const normalizeLedgerId = (id) => {
-  if (!id) return null;
+// const normalizeLedgerId = (id) => {
+//   if (!id) return null;
 
-  if (id === "cash") return 0;
+//   if (id === "cash") return 0;
 
-  if (typeof id === "string" && id.startsWith("bank_")) {
-    return parseInt(id.split("_")[1], 10);
-  }
+//   if (typeof id === "string" && id.startsWith("bank_")) {
+//     return parseInt(id.split("_")[1], 10);
+//   }
 
-  return parseInt(id, 10) || id;
-};
+//   return parseInt(id, 10) || id;
+// };
     // Process each transaction
     for (let t of transactions) {
 
@@ -287,7 +320,7 @@ export const getContraVouchers = async (req, res) => {
   try {
 
     const [vouchers] = await pool.query(
-      `SELECT * FROM contra_vouchers WHERE companyId = ? ORDER BY id DESC`,
+      `SELECT *, DATE_FORMAT(date, '%Y-%m-%d') AS formattedDate FROM contra_vouchers WHERE companyId = ? ORDER BY id DESC`,
       [companyId]
     );
 
@@ -314,6 +347,7 @@ export const getContraVouchers = async (req, res) => {
     // 3️⃣ Merge transactions into each voucher
     const finalData = vouchers.map((voucher) => ({
       ...voucher,
+      date: voucher.formattedDate || voucher.date,
       companyName: company?.name || "",
       companyLocation: buildCompanyLocation(company),
       transactions: transactions.filter(
@@ -341,7 +375,7 @@ export const getContraVoucherById = async (req, res) => {
 
   try {
     const [[voucher]] = await pool.query(
-      `SELECT * FROM contra_vouchers WHERE id = ?`,
+      `SELECT *, DATE_FORMAT(date, '%Y-%m-%d') AS formattedDate FROM contra_vouchers WHERE id = ?`,
       [id]
     );
 
@@ -349,16 +383,38 @@ export const getContraVoucherById = async (req, res) => {
       return res.status(404).json({ message: "Voucher not found" });
     }
 
+    voucher.date = voucher.formattedDate || voucher.date;
+    delete voucher.formattedDate;
+
     const [transactions] = await pool.query(
-      `SELECT * FROM contra_transactions WHERE voucherId = ?`,
+      `SELECT * FROM contra_transactions WHERE voucherId = ?  ORDER BY id DESC`,
       [id]
     );
 
-    res.status(200).json({
-      message: "Voucher Fetched",
-      voucher,
-      transactions,
-    });
+const formattedTransactions =
+  transactions.map((t) => ({
+
+    ...t,
+
+    fromAccount:
+      t.fromAccount === 0 ||
+      t.fromAccount === "0"
+        ? "cash"
+        : `bank_${t.fromAccount}`,
+
+    toAccount:
+      t.toAccount === 0 ||
+      t.toAccount === "0"
+        ? "cash"
+        : `bank_${t.toAccount}`,
+  }));
+
+
+res.status(200).json({
+  message: "Voucher Fetched",
+  voucher,
+  transactions: formattedTransactions,
+});
   } catch (error) {
     console.error("FETCH SINGLE ERROR:", error);
     res.status(500).json({ message: "Internal Server Error" });
@@ -514,7 +570,21 @@ export const updateContraVoucher = async (req, res) => {
         `INSERT INTO contra_transactions 
            (voucherId, fromAccount, toAccount, amount, narration)
          VALUES (?, ?, ?, ?, ?)`,
-        [id, t.fromAccount, t.toAccount, t.amount, t.narration]
+        [
+  id,
+
+  normalizeLedgerId(
+    t.fromAccount
+  ),
+
+  normalizeLedgerId(
+    t.toAccount
+  ),
+
+  t.amount,
+
+  t.narration
+]
       );
 
       // Reduce FROM account

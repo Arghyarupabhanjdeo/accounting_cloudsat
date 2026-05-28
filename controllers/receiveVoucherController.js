@@ -6,6 +6,20 @@ import { ensureCreatorColumns, getCreatorFromRequest } from "../utils/creatorTra
 
 const getAccountName = async (ledgerId, companyId) => {
   if (!ledgerId) return "N/A";
+  if (ledgerId === "cash") return "Cash";
+  if (typeof ledgerId === "string" && ledgerId.startsWith("bank_")) {
+    const bankId = parseInt(ledgerId.split("_")[1], 10);
+    if (!Number.isNaN(bankId)) {
+      const [[bank]] = await pool.query(
+        "SELECT accountName, bankName FROM bank_accounts WHERE id = ? AND companyId = ?",
+        [bankId, companyId]
+      );
+      return bank ? `${bank.accountName}${bank.bankName ? ` (${bank.bankName})` : ""}` : ledgerId;
+    }
+  }
+  if (typeof ledgerId === "string" && ledgerId.startsWith("ledger_")) {
+    ledgerId = ledgerId.split("_")[1];
+  }
   try {
     const isNumeric = !isNaN(Number(ledgerId));
     if (isNumeric) {
@@ -19,6 +33,15 @@ const getAccountName = async (ledgerId, companyId) => {
     console.error("Error in getAccountName:", err);
     return ledgerId;
   }
+};
+
+const normalizeReceiptAccountId = (value) => {
+  if (value === null || value === undefined || value === "") return "";
+  const account = String(value);
+  if (account === "cash" || account.startsWith("bank_") || account.startsWith("ledger_")) {
+    return account;
+  }
+  return `bank_${account}`;
 };
 
 // export const createReceiveVoucher = async (req, res) => {
@@ -230,16 +253,21 @@ export const getReceiveVoucher = async (req, res) => {
   const { companyId } = req.params
   try {
     const [rows] = await pool.query(
-      `SELECT id, voucherId, companyId, date, receiptAccountId, instrumentType, referenceNo, narration, customer, SUM(amount) AS amount, totalAmount, pdf_path
+      `SELECT id, voucherId, companyId, DATE_FORMAT(date, '%Y-%m-%d') AS date, receiptAccountId, instrumentType, referenceNo, narration, customer, SUM(amount) AS amount, totalAmount, pdf_path
        FROM receive_vouchers 
        WHERE companyId = ?
        GROUP BY IFNULL(NULLIF(voucherId, ''), id)
        ORDER BY id DESC`,
       [companyId]
     );
+    const data = rows.map((row) => ({
+      ...row,
+      receiptAccountId: normalizeReceiptAccountId(row.receiptAccountId),
+    }));
+
     res.status(200).json({
       message: "data fetched SuccessFully",
-      data: rows
+      data
     })
   } catch (error) {
     console.log(error);
@@ -366,10 +394,25 @@ export const getReceiveVoucherById = async (req, res) => {
   const { voucherId } = req.params;
 
   try {
-    const [rows] = await pool.query(
-      `SELECT * FROM receive_vouchers WHERE voucherId = ?`,
+    let [rows] = await pool.query(
+      `SELECT *, DATE_FORMAT(date, '%Y-%m-%d') AS formattedDate FROM receive_vouchers WHERE voucherId = ?`,
       [voucherId]
     );
+
+    if (rows.length === 0) {
+      const [rowsById] = await pool.query(
+        `SELECT *, DATE_FORMAT(date, '%Y-%m-%d') AS formattedDate FROM receive_vouchers WHERE id = ?`,
+        [voucherId]
+      );
+
+      if (rowsById.length > 0) {
+        const actualVoucherId = rowsById[0].voucherId;
+        [rows] = await pool.query(
+          `SELECT *, DATE_FORMAT(date, '%Y-%m-%d') AS formattedDate FROM receive_vouchers WHERE voucherId = ?`,
+          [actualVoucherId]
+        );
+      }
+    }
 
     if (rows.length === 0) {
       return res.status(404).json({ success: false, message: "Voucher not found" });
@@ -382,15 +425,15 @@ export const getReceiveVoucherById = async (req, res) => {
       id: firstRow.id,
       voucherId: firstRow.voucherId,
       companyId: firstRow.companyId,
-      date: firstRow.date,
-      receiptAccountId: firstRow.receiptAccountId,
+      date: firstRow.formattedDate || firstRow.date,
+      receiptAccountId: normalizeReceiptAccountId(firstRow.receiptAccountId),
       instrumentType: firstRow.instrumentType,
       referenceNo: firstRow.referenceNo,
       narration: firstRow.narration,
       totalAmount: firstRow.totalAmount || rows.reduce((sum, r) => sum + Number(r.amount || 0), 0),
       items: rows.map(r => ({
         id: r.id,
-        ledgerId: r.customer,
+        ledgerId: String(r.customer),
         amount: r.amount
       }))
     });
@@ -533,6 +576,13 @@ export const updateReceiveVoucher = async (req, res) => {
       [voucherId]
     );
 
+    if (oldRows.length === 0) {
+      await conn.rollback();
+      return res.status(404).json({ success: false, message: "Voucher not found" });
+    }
+
+    const activeCompanyId = companyId || oldRows[0].companyId;
+
     for (const oldRow of oldRows) {
       const ledgerId = oldRow.customer;
       const amount = oldRow.amount;
@@ -542,12 +592,12 @@ export const updateReceiveVoucher = async (req, res) => {
         if (isNumeric) {
           await conn.query(
             `UPDATE ledgers SET closingBalance = COALESCE(closingBalance, 0) - ? WHERE id = ? AND companyId = ?`,
-            [amount, Number(ledgerId), companyId]
+            [amount, Number(ledgerId), activeCompanyId]
           );
         } else {
           await conn.query(
             `UPDATE ledgers SET closingBalance = COALESCE(closingBalance, 0) - ? WHERE name = ? AND companyId = ?`,
-            [amount, ledgerId, companyId]
+            [amount, ledgerId, activeCompanyId]
           );
         }
       }
@@ -591,7 +641,7 @@ export const updateReceiveVoucher = async (req, res) => {
         `,
         [
           voucherNo || voucherId, // Use the new voucherNo, or fallback to parameter
-          companyId,
+          activeCompanyId,
           date,
           receiptAccountId,
           instrumentType,
@@ -608,12 +658,12 @@ export const updateReceiveVoucher = async (req, res) => {
       if (isNumeric) {
         await conn.query(
           `UPDATE ledgers SET closingBalance = COALESCE(closingBalance, 0) + ? WHERE id = ? AND companyId = ?`,
-          [amount, Number(ledgerId), companyId]
+          [amount, Number(ledgerId), activeCompanyId]
         );
       } else {
         await conn.query(
           `UPDATE ledgers SET closingBalance = COALESCE(closingBalance, 0) + ? WHERE name = ? AND companyId = ?`,
-          [amount, ledgerId, companyId]
+          [amount, ledgerId, activeCompanyId]
         );
       }
     }
@@ -626,7 +676,7 @@ export const updateReceiveVoucher = async (req, res) => {
       const pdfItems = [];
       for (let item of items) {
         pdfItems.push({
-          description: await getAccountName(item.ledgerId, companyId),
+          description: await getAccountName(item.ledgerId, activeCompanyId),
           amount: item.amount
         });
       }
@@ -639,13 +689,13 @@ export const updateReceiveVoucher = async (req, res) => {
         total: totalAmount,
         items: pdfItems,
         narration: narration,
-        customer: await getAccountName(receiptAccountId, companyId)
+        customer: await getAccountName(receiptAccountId, activeCompanyId)
       };
 
       await generateReceiptPDF(pdfData, pdfPath);
       await pool.query(
         `UPDATE receive_vouchers SET pdf_path = ? WHERE voucherId = ? AND companyId = ?`,
-        [pdfPath, voucherNo || voucherId, companyId]
+        [pdfPath, voucherNo || voucherId, activeCompanyId]
       );
     } catch (pdfErr) {
       console.error("Error generating PDF in updateReceiveVoucher:", pdfErr);

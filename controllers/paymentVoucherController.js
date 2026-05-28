@@ -6,6 +6,20 @@ import { ensureCreatorColumns, getCreatorFromRequest } from "../utils/creatorTra
 
 const getAccountName = async (ledgerId, companyId) => {
   if (!ledgerId) return "N/A";
+  if (ledgerId === "cash") return "Cash";
+  if (typeof ledgerId === "string" && ledgerId.startsWith("bank_")) {
+    const bankId = parseInt(ledgerId.split("_")[1], 10);
+    if (!Number.isNaN(bankId)) {
+      const [[bank]] = await pool.query(
+        "SELECT accountName, bankName FROM bank_accounts WHERE id = ? AND companyId = ?",
+        [bankId, companyId]
+      );
+      return bank ? `${bank.accountName}${bank.bankName ? ` (${bank.bankName})` : ""}` : ledgerId;
+    }
+  }
+  if (typeof ledgerId === "string" && ledgerId.startsWith("ledger_")) {
+    ledgerId = ledgerId.split("_")[1];
+  }
   try {
     const [[ledger]] = await pool.query("SELECT name FROM ledgers WHERE id = ? AND companyId = ?", [ledgerId, companyId]);
     return ledger ? ledger.name : ledgerId;
@@ -13,6 +27,15 @@ const getAccountName = async (ledgerId, companyId) => {
     console.error("Error in getAccountName:", err);
     return ledgerId;
   }
+};
+
+const normalizePaymentAccountType = (value) => {
+  if (value === null || value === undefined || value === "") return "";
+  const account = String(value);
+  if (account === "cash" || account.startsWith("bank_") || account.startsWith("ledger_")) {
+    return account;
+  }
+  return `bank_${account}`;
 };
 
 // export const createPaymentVoucher = async (req, res) => {
@@ -193,7 +216,7 @@ export const getAllPaymentVouchers = async (req, res) => {
 
   try {
     const [rows] = await pool.query(
-      `SELECT id, companyId, voucherNo, date, accountType, narration, SUM(amount) AS amount, totalAmount, pdf_path
+      `SELECT id, companyId, voucherNo, DATE_FORMAT(date, '%Y-%m-%d') AS date, accountType, narration, SUM(amount) AS amount, totalAmount, pdf_path
        FROM payment_vouchers 
        WHERE companyId = ?
        GROUP BY IFNULL(NULLIF(voucherNo, ''), id)
@@ -201,7 +224,10 @@ export const getAllPaymentVouchers = async (req, res) => {
       [companyId]
     );
 
-    res.json(rows);
+    res.json(rows.map((row) => ({
+      ...row,
+      accountType: normalizePaymentAccountType(row.accountType),
+    })));
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: "Error fetching vouchers" });
@@ -216,7 +242,7 @@ export const getPaymentVoucherById = async (req, res) => {
 
   try {
     const [[voucher]] = await pool.query(
-      `SELECT * FROM payment_vouchers WHERE id = ?`,
+      `SELECT *, DATE_FORMAT(date, '%Y-%m-%d') AS formattedDate FROM payment_vouchers WHERE id = ?`,
       [voucherId]
     );
 
@@ -227,7 +253,19 @@ export const getPaymentVoucherById = async (req, res) => {
       [voucher.voucherNo, voucher.companyId]
     );
 
-    res.json({ ...voucher, entries });
+res.json({
+
+  ...voucher,
+  date: voucher.formattedDate || voucher.date,
+  formattedDate: undefined,
+
+  accountType:
+    normalizePaymentAccountType(
+      voucher.accountType
+    ),
+
+  entries,
+});
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: "Error fetching voucher details" });
