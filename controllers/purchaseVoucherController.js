@@ -364,7 +364,7 @@ export const updatePurchaseVoucher = async (req, res) => {
     }
 
     const [companyRows] = await conn.query(
-      `SELECT name, address, pinCode, gstin, state, email, mobile, city FROM companies WHERE id = ?`,
+      `SELECT name, address, pinCode, gstin, state, email, mobile, city, country FROM companies WHERE id = ?`,
       [companyId]
     );
     const company = companyRows[0] || {};
@@ -563,7 +563,8 @@ export const updatePurchaseVoucher = async (req, res) => {
         city: company.city || "",
         pincode: company.pinCode || "",
         gst: company.gstin || "",
-        state_name: company.state || ""
+        state_name: company.state || "",
+        country: company.country || ""
       },
       supplier: {
         name: mailingName || customer || client.name || "",
@@ -779,7 +780,8 @@ export const downloadPurchaseVoucherPDF = async (req, res) => {
         city: company.city || "",
         pincode: company.pinCode || "",
         gst: company.gstin || "",
-        state_name: company.state || ""
+        state_name: company.state || "",
+        country: company.country || ""
       },
       supplier: {
         name: voucher.mailingName || voucher.customer || client.name || "",

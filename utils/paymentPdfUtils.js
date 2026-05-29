@@ -99,12 +99,23 @@ try {
 } catch (err) {
   console.error("PDF Account Fetch Error:", err);
 }
-            const companyName = "Cloudsat Private Limited";
-
-            
+            const companyName = data.company?.name || "Cloudsat Private Limited";
+            const companyAddress = data.company?.address || "";
+            const companyState = data.company?.state || "";
+            const companyGstin = data.company?.gstin || "";
+            const companyCountry = data.company?.country || "";
 
             /* ================= HEADER ================= */
             doc.fontSize(16).font("Helvetica-Bold").text(companyName, { align: "center" });
+            
+            let headerAddrParts = [];
+            if (companyAddress) headerAddrParts.push(companyAddress);
+            if (companyState) headerAddrParts.push(companyState);
+            if (companyCountry) headerAddrParts.push(companyCountry);
+            if (companyGstin) headerAddrParts.push(`GSTIN: ${companyGstin}`);
+            if (headerAddrParts.length > 0) {
+                doc.fontSize(9).font("Helvetica").text(headerAddrParts.join(", "), { align: "center" });
+            }
             doc.moveDown(0.5);
             
             doc.fontSize(14).font("Helvetica-Bold").text("PAYMENT VOUCHER", { align: "center", underline: true });

@@ -138,7 +138,11 @@ export const generateNotePDF = async (data, type, fileName, subDir) => {
             doc.fontSize(8).font("Helvetica-Bold").text(data.sender?.company_name || "Cloudsat Private Limited", MARGIN + 5, companyY, { width: (CONTENT_WIDTH * 0.5) - 10 });
             companyY = doc.y + 3;
 
-            doc.fontSize(7).font("Helvetica").text(data.sender?.address || "", MARGIN + 5, companyY, { width: (CONTENT_WIDTH * 0.5) - 10 });
+            let senderAddress = data.sender?.address || "";
+            if (data.sender?.country) {
+                senderAddress += (senderAddress ? ", " : "") + data.sender.country;
+            }
+            doc.fontSize(7).font("Helvetica").text(senderAddress, MARGIN + 5, companyY, { width: (CONTENT_WIDTH * 0.5) - 10 });
             companyY = doc.y + 4;
 
             if (data.sender?.gst) {

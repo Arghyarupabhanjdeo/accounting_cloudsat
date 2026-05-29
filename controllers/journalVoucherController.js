@@ -111,13 +111,15 @@ export const createJournalVoucher = async (req, res) => {
 
       pdfPath = `uploads/journal/Journal_${voucherId}_${Date.now()}.pdf`;
 
+      const [[company]] = await pool.query("SELECT * FROM companies WHERE id = ?", [companyId]);
       const pdfData = {
         voucherNo: voucherId,
         date: date,
         items: pdfItems,
         totalDebit,
         totalCredit,
-        narration: narration
+        narration: narration,
+        company: company || {}
       };
 
       await generateJournalVoucherPDF(pdfData, pdfPath);
@@ -284,123 +286,219 @@ export const bulkCreateJournalVoucher = async (req, res) => {
 
 // UPDATE JOURNAL VOUCHER
 export const updateJournalVoucher = async (req, res) => {
-  const { id } = req.params;
-  const { date, narration, transactions } = req.body;
 
-  if (!transactions || transactions.length === 0) {
-    return res.status(400).json({ message: "Transactions are required" });
-  }
+const { id } = req.params;
 
-  const totalDebit = transactions.reduce(
-    (sum, t) => sum + (parseFloat(t.debit) || 0),
-    0
+const {
+date,
+narration,
+transactions
+} = req.body;
+
+if (!transactions || transactions.length === 0) {
+return res.status(400).json({
+message: "Transactions are required"
+});
+}
+
+const totalDebit = transactions.reduce(
+(sum, t) =>
+sum + (parseFloat(t.debit) || 0),
+0
+);
+
+const totalCredit = transactions.reduce(
+(sum, t) =>
+sum + (parseFloat(t.credit) || 0),
+0
+);
+
+const ledgerIds = transactions
+.map((t) => t.ledgerId || t.particulars)
+.join(",");
+
+const connection =
+await pool.getConnection();
+
+try {
+
+
+await connection.beginTransaction();
+
+// Check voucher exists
+const [[voucher]] =
+  await connection.query(
+    `
+    SELECT *
+    FROM journal_vouchers
+    WHERE id = ?
+    `,
+    [id]
   );
-  const totalCredit = transactions.reduce(
-    (sum, t) => sum + (parseFloat(t.credit) || 0),
-    0
+
+if (!voucher) {
+
+  await connection.rollback();
+  connection.release();
+
+  return res.status(404).json({
+    message:
+      "Journal Voucher not found"
+  });
+}
+
+// Update voucher
+await connection.query(
+  `
+  UPDATE journal_vouchers
+  SET
+    ledgerId = ?,
+    date = ?,
+    narration = ?,
+    totalDebit = ?,
+    totalCredit = ?
+  WHERE id = ?
+  `,
+  [
+    ledgerIds,
+    date,
+    narration,
+    totalDebit,
+    totalCredit,
+    id
+  ]
+);
+
+// Delete old transactions
+await connection.query(
+  `
+  DELETE FROM journal_transactions
+  WHERE voucherId = ?
+  `,
+  [id]
+);
+
+// Insert updated transactions
+for (const t of transactions) {
+
+  const particulars =
+    await getAccountName(
+      t.ledgerId || t.particulars,
+      voucher.companyId
+    );
+
+  await connection.query(
+    `
+    INSERT INTO journal_transactions
+    (
+      companyId,
+      ledgerId,
+      voucherId,
+      particulars,
+      debit,
+      credit
+    )
+    VALUES (?, ?, ?, ?, ?, ?)
+    `,
+    [
+      Number(voucher.companyId),
+      Number(t.ledgerId),
+      Number(id),
+      particulars,
+      parseFloat(t.debit) || 0,
+      parseFloat(t.credit) || 0
+    ]
   );
+}
 
-  const ledgerIds = transactions.map(t => t.ledgerId || t.particulars).join(',');
+await connection.commit();
 
-  const connection = await pool.getConnection();
+// Generate PDF
+let pdfPath = "";
 
-  try {
-    await connection.beginTransaction();
+try {
 
-    // Check if voucher exists
-    const [[voucher]] = await connection.query(
-      `SELECT * FROM journal_vouchers WHERE id=?`,
-      [id]
-    );
+  const pdfItems = [];
 
-    if (!voucher) {
-      connection.release();
-      return res.status(404).json({ message: "Journal Voucher not found" });
-    }
+  for (const t of transactions) {
 
-    // Update main voucher table
-    await connection.query(
-      `UPDATE journal_vouchers 
-       SET ledgerId=?, date=?, narration=?, totalDebit=?, totalCredit=?
-       WHERE id=?`,
-      [ledgerIds, date, narration, totalDebit, totalCredit, id]
-    );
-
-    // Delete old transactions
-    await connection.query(
-      `DELETE FROM journal_transactions WHERE voucherId=?`,
-      [id]
-    );
-
-    // Insert new transaction rows
-    for (const t of transactions) {
-      await connection.query(
-        `INSERT INTO journal_transactions 
-        (companyId, ledgerId, voucherId, particulars, debit, credit)
-        VALUES (?, ?, ?, ?, ?)`,
-       [
-  voucher.companyId,
-  Number(t.ledgerId),
-  id,
-
-  await getAccountName(
-    t.ledgerId || t.particulars,
-    voucher.companyId
-  ),
-
-  parseFloat(t.debit) || 0,
-  parseFloat(t.credit) || 0,
-]
-      );
-    }
-
-    await connection.commit();
-
-    // Pre-generate PDF for instant preview
-    let pdfPath = "";
-    try {
-      const pdfItems = [];
-      for (const t of transactions) {
-        pdfItems.push({
-          description: await getAccountName(t.ledgerId || t.particulars, voucher.companyId),
-          debit: t.debit,
-          credit: t.credit
-        });
-      }
-
-      pdfPath = `uploads/journal/Journal_${id}_${Date.now()}.pdf`;
-
-      const pdfData = {
-        voucherNo: id,
-        date: date,
-        items: pdfItems,
-        totalDebit,
-        totalCredit,
-        narration: narration
-      };
-
-      await generateJournalVoucherPDF(pdfData, pdfPath);
-      await connection.query(
-        `UPDATE journal_vouchers SET pdf_path = ? WHERE id = ?`,
-        [pdfPath, id]
-      );
-    } catch (pdfErr) {
-      console.error("Error generating PDF on updateJournalVoucher:", pdfErr);
-    }
-
-    res.json({
-      message: "Journal Voucher updated successfully",
-      pdf_path: pdfPath
+    pdfItems.push({
+      description:
+        await getAccountName(
+          t.ledgerId || t.particulars,
+          voucher.companyId
+        ),
+      debit: t.debit,
+      credit: t.credit
     });
-
-  } catch (error) {
-    await connection.rollback();
-    console.error(error);
-    res.status(500).json({ message: "Server Error", error });
-  } finally {
-    connection.release();
   }
+
+  pdfPath =
+    `uploads/journal/Journal_${id}_${Date.now()}.pdf`;
+
+  const [[company]] = await pool.query("SELECT * FROM companies WHERE id = ?", [voucher.companyId]);
+  const pdfData = {
+    voucherNo: id,
+    date,
+    items: pdfItems,
+    totalDebit,
+    totalCredit,
+    narration,
+    company: company || {}
+  };
+
+  await generateJournalVoucherPDF(
+    pdfData,
+    pdfPath
+  );
+
+  await connection.query(
+    `
+    UPDATE journal_vouchers
+    SET pdf_path = ?
+    WHERE id = ?
+    `,
+    [pdfPath, id]
+  );
+
+} catch (pdfErr) {
+
+  console.error(
+    "PDF Generation Error:",
+    pdfErr
+  );
+}
+
+res.json({
+  success: true,
+  message:
+    "Journal Voucher updated successfully",
+  pdf_path: pdfPath
+});
+```
+
+} catch (error) {
+
+```
+await connection.rollback();
+
+console.error(error);
+
+res.status(500).json({
+  message: "Server Error",
+  error: error.message
+});
+
+
+} finally {
+
+
+connection.release();
+
+
+}
 };
+
 
 // DELETE JOURNAL VOUCHER
 export const deleteJournalVoucher = async (req, res) => {
@@ -473,13 +571,15 @@ export const downloadJournalVoucherPDF = async (req, res) => {
 
     const pdfPath = `uploads/journal/Journal_${id}_${Date.now()}.pdf`;
 
+    const [[company]] = await pool.query("SELECT * FROM companies WHERE id = ?", [voucher.companyId]);
     const pdfData = {
       voucherNo: id,
       date: voucher.date,
       items: pdfItems,
       totalDebit: voucher.totalDebit,
       totalCredit: voucher.totalCredit,
-      narration: voucher.narration
+      narration: voucher.narration,
+      company: company || {}
     };
 
     await generateJournalVoucherPDF(pdfData, pdfPath);

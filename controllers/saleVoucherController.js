@@ -69,19 +69,7 @@ export const createSalesVoucher = async (req, res) => {
     await ensureCreatorColumns(connection, "sales_vouchers");
     /* ================= SENDER/COMPANY INFO ================= */
    const [companyRows] = await connection.query(
-  `SELECT 
-      name,
-      address,
-      city,
-      state,
-      stateCode,
-      country,
-      pinCode,
-      gstin,
-      email,
-      mobile
-   FROM companies 
-   WHERE id = ?`,
+  `SELECT name, address, city, pinCode, gstin, state, email, mobile FROM companies WHERE id = ?`,
   [companyId]
 );
     const company = companyRows[0] || {};
@@ -339,7 +327,7 @@ export const createSalesVoucher = async (req, res) => {
         company_name: consignorName || sender.name || "",
         address: consignorAddress || sender.address || "",
        city: sender.city || "",
-state_code: sender.stateCode || "",
+
 country: sender.country || "",
         pincode: consignorPincode || sender.pinCode || "",
         gst: consignorGSTIN || sender.gstin || "",
@@ -505,7 +493,7 @@ export const updateSaleVoucher = async (req, res) => {
 
     // 2. Update header
     const [companyRows] = await connection.query(
-      `SELECT name, address, pinCode, gstin, state, email, mobile FROM companies WHERE id = ?`,
+      `SELECT name, address, pinCode, gstin, state, email, mobile, city, country FROM companies WHERE id = ?`,
       [companyId]
     );
     const company = companyRows[0] || {};
@@ -639,7 +627,8 @@ export const updateSaleVoucher = async (req, res) => {
         gst: consignorGSTIN || sender.gstin || sender.gst || "",
         state_name: consignorState || sender.state || "",
         email: consignorEmail || sender.email || "",
-        phone: sender.mobile || ""
+        phone: sender.mobile || "",
+        country: sender.country || ""
       },
       client: {
         name: req.body.mailingName || req.body.customer || clientInfo.name || "",
@@ -647,7 +636,8 @@ export const updateSaleVoucher = async (req, res) => {
         city: req.body.city || "",
         pincode: req.body.pincode || clientInfo.pincode || "",
         gst: req.body.gstin || clientInfo.gst || "",
-        state_name: req.body.state || clientInfo.state || ""
+        state_name: req.body.state || clientInfo.state || "",
+        country: req.body.country || ""
       },
       items: items.map(item => ({
         itemname: item.item,
@@ -753,17 +743,7 @@ export const ewaybill = async (req, res) => {
 
   try {
     const [rows] = await pool.query(
-      `SELECT 
-        id, invoiceNo, date, customer, grand_total,
-        ewayBillNo, ewayBillDate,
-        consignorName, consignorGSTIN, consignorState, consignorPincode, consignorAddress,
-        consigneeName, consigneeGSTIN, consigneeState, consigneePincode, consigneeAddress,
-        distanceKM, 
-        vehicleNumber 
-      FROM sales_vouchers
-      WHERE companyId = ? 
-        AND ewayBillNo IS NOT NULL 
-        AND ewayBillNo != ''`,
+      `SELECT id, invoiceNo, date, customer, grand_total, ewayBillNo, ewayBillDate, consignorName, consignorGSTIN, consignorState, consignorPincode, consignorAddress, consigneeName, consigneeGSTIN, consigneeState, consigneePincode, consigneeAddress, distanceKM, vehicleNumber FROM sales_vouchers WHERE companyId = ? AND ewayBillNo IS NOT NULL AND ewayBillNo != ''`,
       [companyId]
     );
 
@@ -1234,7 +1214,8 @@ export const downloadSaleVoucherPDF = async (req, res) => {
         gst: voucher.consignorGSTIN || company.gstin || "",
         state_name: voucher.consignorState || company.state || "",
         email: voucher.consignorEmail || company.email || "",
-        phone: company.mobile || ""
+        phone: company.mobile || "",
+        country: company.country || ""
       },
       client: {
         name: voucher.mailingName || voucher.customer || client.name || "",
@@ -1242,7 +1223,8 @@ export const downloadSaleVoucherPDF = async (req, res) => {
         city: "",
         pincode: voucher.pincode || client.pincode || "",
         gst: voucher.gstin || client.gst || "",
-        state_name: voucher.state || client.state || ""
+        state_name: voucher.state || client.state || "",
+        country: voucher.country || ""
       },
       items: items.map(item => ({
         itemname: item.item,

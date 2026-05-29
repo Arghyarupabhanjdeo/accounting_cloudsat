@@ -17,9 +17,9 @@ router.get("/getReceiptVoucher/:companyId", getReceiveVoucher)
 router.post("/bulk-create", bulkCreateReceiveVoucher);
 
 // Details, Edit & Delete routes
+router.get("/download/:id", downloadReceiveVoucherPDF);
 router.get("/:voucherId", getReceiveVoucherById);
 router.put("/update/:voucherId", updateReceiveVoucher);
 router.delete("/delete/:voucherId", deleteReceiveVoucher);
-router.get("/download/:id", downloadReceiveVoucherPDF);
 
 export default router;

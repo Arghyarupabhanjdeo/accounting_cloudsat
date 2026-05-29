@@ -6,7 +6,7 @@ export const getCompanies = async (req, res) => {
 
   try {
     const [rows] = await pool.query(
-      "SELECT * FROM companies WHERE userId = ? ORDER BY id DESC",
+      "SELECT * FROM companies WHERE userId = ? AND id = 14 ORDER BY id DESC",
       [userId]
     );
 
