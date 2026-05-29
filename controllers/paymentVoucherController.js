@@ -179,13 +179,15 @@ export const createPaymentVoucher = async (req, res) => {
 
       pdfPath = `uploads/payment/Payment_${voucherNo}_${Date.now()}.pdf`;
 
+      const [[company]] = await pool.query("SELECT * FROM companies WHERE id = ?", [companyId]);
       const pdfData = {
         voucherNo: voucherNo,
         date: date,
         total: totalAmount,
         items: pdfItems,
         narration: narration,
-        customer: await getAccountName(accountType, companyId)
+        customer: await getAccountName(accountType, companyId),
+        company: company || {}
       };
 
       await generatePaymentPDF(pdfData, pdfPath);
@@ -253,19 +255,19 @@ export const getPaymentVoucherById = async (req, res) => {
       [voucher.voucherNo, voucher.companyId]
     );
 
-res.json({
+    res.json({
 
-  ...voucher,
-  date: voucher.formattedDate || voucher.date,
-  formattedDate: undefined,
+      ...voucher,
+      date: voucher.formattedDate || voucher.date,
+      formattedDate: undefined,
 
-  accountType:
-    normalizePaymentAccountType(
-      voucher.accountType
-    ),
+      accountType:
+        normalizePaymentAccountType(
+          voucher.accountType
+        ),
 
-  entries,
-});
+      entries,
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: "Error fetching voucher details" });
@@ -500,13 +502,15 @@ export const updatePaymentVoucher = async (req, res) => {
 
       pdfPath = `uploads/payment/Payment_${voucherNo || id}_${Date.now()}.pdf`;
 
+      const [[company]] = await pool.query("SELECT * FROM companies WHERE id = ?", [activeCompanyId]);
       const pdfData = {
         voucherNo: voucherNo || id,
         date: date,
         total: totalAmount,
         items: pdfItems,
         narration: narration,
-        customer: await getAccountName(accountType, activeCompanyId)
+        customer: await getAccountName(accountType, activeCompanyId),
+        company: company || {}
       };
 
       await generatePaymentPDF(pdfData, pdfPath);
@@ -620,13 +624,15 @@ export const downloadPaymentVoucherPDF = async (req, res) => {
 
     const pdfPath = `uploads/payment/Payment_${voucher.voucherNo || id}_${Date.now()}.pdf`;
 
+    const [[company]] = await pool.query("SELECT * FROM companies WHERE id = ?", [voucher.companyId]);
     const pdfData = {
       voucherNo: voucher.voucherNo || id,
       date: voucher.date,
       total: voucher.totalAmount,
       items,
       narration: voucher.narration,
-      customer: await getAccountName(voucher.accountType, voucher.companyId)
+      customer: await getAccountName(voucher.accountType, voucher.companyId),
+      company: company || {}
     };
 
     await generatePaymentPDF(pdfData, pdfPath);

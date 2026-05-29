@@ -180,6 +180,7 @@ if (data.sender.pincode)
             
             let consAddressStr = data.shipping_details?.consigneeAddress || data.client.address || "";
             if (shipCity) consAddressStr += (consAddressStr ? ", " : "") + shipCity;
+            if (data.client?.country) consAddressStr += (consAddressStr ? ", " : "") + data.client.country;
             if (shipPin) consAddressStr += (consAddressStr ? " - " : "") + shipPin;
 
             doc.fontSize(8).font("Helvetica").text(consAddressStr, MARGIN + 5, consAddrY, { width: (CONTENT_WIDTH * 0.5) - 10 });
@@ -217,6 +218,7 @@ if (data.sender.pincode)
             } else {
                 buyerAddressStr = data.client.address || "";
                 if (data.client.city) buyerAddressStr += (buyerAddressStr ? ", " : "") + data.client.city;
+                if (data.client.country) buyerAddressStr += (buyerAddressStr ? ", " : "") + data.client.country;
                 if (data.client.pincode) buyerAddressStr += (buyerAddressStr ? " - " : "") + data.client.pincode;
             }
 

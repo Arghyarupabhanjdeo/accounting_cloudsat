@@ -211,7 +211,8 @@ export const getNotePDF = async (req, res) => {
         gst: note.consignorGSTIN || company.gstin || "",
         email: note.consignorEmail || company.email || "",
         phone: company.mobile || "",
-        state: note.consignorState || company.state || ""
+        state: note.consignorState || company.state || "",
+        country: company.country || ""
       }
     };
 

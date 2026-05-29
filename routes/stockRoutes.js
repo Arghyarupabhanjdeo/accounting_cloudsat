@@ -1,5 +1,5 @@
 import express from "express"
-import { createStockList, deleteStock, getStocks, updateStocks } from "../controllers/stockController.js";
+import { createStockList, deleteStock, getStocks, updateStocks, getAllStockNames, getAllHSN } from "../controllers/stockController.js";
 
 const router = express.Router() ;
 
@@ -7,4 +7,6 @@ router.post("/createStock/:companyId" , createStockList)
 router.get("/getStockData/:companyId",getStocks)
 router.put("/updateStock/:companyId/:stockId",updateStocks)
 router.delete("/deleteStock/:companyId/:stockId",deleteStock)
+router.get("/getStockNames/:companyId", getAllStockNames);
+router.get("/getStockHSN/:companyId", getAllHSN);
 export default router ;

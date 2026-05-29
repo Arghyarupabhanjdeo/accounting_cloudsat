@@ -243,3 +243,56 @@ export const deleteStock = async (req, res) => {
   }
 };
 
+export const getAllStockNames = async (req, res) => {
+  const { companyId } = req.params;
+
+  if (!companyId) {
+    return res.status(400).json({ message: "Missing CompanyId" });
+  }
+
+  try {
+    const [rows] = await pool.query(
+      `SELECT id, name FROM stocks WHERE companyId = ? AND isdeleted = 0 ORDER BY name ASC`,
+      [companyId]
+    );
+
+    res.status(200).json({
+      message: "Stock names fetched successfully",
+      data: rows,
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({
+      message: "Server error while fetching stock names",
+      error: error.message,
+    });
+  }
+};
+
+export const getAllHSN = async (req, res) => {
+  const { companyId } = req.params;
+
+  if (!companyId) {
+    return res.status(400).json({ message: "Missing CompanyId" });
+  }
+
+  try {
+    const [rows] = await pool.query(
+      `SELECT id, hsn FROM stocks WHERE companyId = ? AND isdeleted = 0 AND hsn IS NOT NULL AND hsn != '' ORDER BY hsn ASC`,
+      [companyId]
+    );
+
+    res.status(200).json({
+      message: "HSN data fetched successfully",
+      data: rows,
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({
+      message: "Server error while fetching HSN data",
+      error: error.message,
+    });
+  }
+};
+
+

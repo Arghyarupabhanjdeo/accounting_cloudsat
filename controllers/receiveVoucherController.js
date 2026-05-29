@@ -44,65 +44,6 @@ const normalizeReceiptAccountId = (value) => {
   return `bank_${account}`;
 };
 
-// export const createReceiveVoucher = async (req, res) => {
-//   const { companyId } = req.params;
-
-//   try {
-//     const {
-//     voucherno,
-//       date,
-//       customer,
-//       ledgerId,
-//       narration,
-//       items,
-//     } = req.body;
-// console.log(req.body);
-
-//     if (!items || items.length === 0) {
-//       return res.status(400).json({ success: false, message: "Items required" });
-//     }
-
-//     const totalAmount = items.reduce((sum, i) => sum + Number(i.amount || 0), 0);
-
-//     // Generate voucherId
-//     const voucherId = Date.now(); // OR auto-increment logic
-
-//     // Insert all items
-//     for (let i = 0; i < items.length; i++) {
-//       const { item, qty, rate, amount } = items[i];
-
-//       await pool.query(
-//         `INSERT INTO receive_vouchers
-//          (voucherId, companyId, date, customer, ledger, narration, item, qty, rate, amount, totalAmount)
-//          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-//         [
-//           voucherno,
-//           companyId,
-//           date,
-//           customer,
-//           ledgerId,
-//           narration,
-//           item,
-//           qty,
-//           rate,
-//           amount,
-//           i === 0 ? totalAmount : null // total only in first row
-//         ]
-//       );
-//     }
-
-//     res.json({
-//       success: true,
-//       message: "Receive voucher saved",
-//       voucherId,
-//       totalAmount,
-//     });
-//   } catch (err) {
-//     console.log("Receive Voucher Error:", err);
-//     res.status(500).json({ success: false, message: "Server error" });
-//   }
-// };
-
 export const createReceiveVoucher = async (req, res) => {
   const { companyId } = req.params;
   const creator = getCreatorFromRequest(req);
@@ -119,90 +60,28 @@ export const createReceiveVoucher = async (req, res) => {
       items,
     } = req.body;
 
-    console.log("RECEIVE-VOUCHER => ", req.body);
-
     if (!items || items.length === 0) {
-      return res.status(400).json({
-        success: false,
-        message: "Items are required",
-      });
+      return res.status(400).json({ success: false, message: "Items are required" });
     }
 
-    // Calculate total
-    const totalAmount = items.reduce(
-      (sum, item) => sum + Number(item.amount || 0),
-      0
-    );
+    const totalAmount = items.reduce((sum, item) => sum + Number(item.amount || 0), 0);
+    const finalVoucherNo = voucherNo || Date.now().toString();
 
-    // Unique voucherId for this voucher set
-    const voucherId = Date.now();
-
-    // Insert all items in the SAME table
     for (let i = 0; i < items.length; i++) {
       const { ledgerId, amount } = items[i];
-
-      console.log("ITEM INFO => ", { ledgerId, amount });
-
-      if (!ledgerId) {
-        console.log("❌ ledgerId missing for item", items[i]);
-        continue;
-      }
-
-      if (!amount || isNaN(Number(amount))) {
-        console.log("❌ Invalid amount for ledger", ledgerId);
-        continue;
-      }
-
-      // Insert row
       await pool.query(
         `INSERT INTO receive_vouchers 
-    (
-      voucherId,
-      companyId,
-      date,
-      receiptAccountId,
-      instrumentType,
-      referenceNo,
-      narration,
-      customer,
-      amount,
-      totalAmount
-    )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `,
-        [
-          voucherNo,
-          companyId,
-          date,
-          receiptAccountId,
-          instrumentType,
-          referenceNo,
-          narration,
-          ledgerId,
-          amount,
-          i === 0 ? totalAmount : null,
-        ]
+        (voucherId, companyId, date, receiptAccountId, instrumentType, referenceNo, narration, customer, amount, totalAmount, created_by_user_id, created_by_employee_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [finalVoucherNo, companyId, date, receiptAccountId, instrumentType, referenceNo, narration, ledgerId, amount, i === 0 ? totalAmount : null, creator.userId, creator.employeeId]
       );
 
-      // SAFE LEDGER UPDATE
-      const [result] = await pool.query(
-        `
-    UPDATE ledgers 
-    SET closingBalance = COALESCE(closingBalance, 0) + ?
-  WHERE id = ? AND companyId = ?
-    `,
+      await pool.query(
+        `UPDATE ledgers SET closingBalance = COALESCE(closingBalance, 0) + ? WHERE id = ? AND companyId = ?`,
         [amount, ledgerId, companyId]
       );
-
-      console.log("LEDGER UPDATE RESULT => ", result);
     }
-    await pool.query(
-      `UPDATE receive_vouchers SET created_by_user_id = ?, created_by_employee_id = ? WHERE companyId = ? AND voucherId = ?`,
-      [creator.userId, creator.employeeId, companyId, voucherNo]
-    );
 
-
-    // Pre-generate PDF for instant preview
     let pdfPath = "";
     try {
       const pdfItems = [];
@@ -213,39 +92,28 @@ export const createReceiveVoucher = async (req, res) => {
         });
       }
 
-      pdfPath = `uploads/receipt/Receipt_${voucherNo || voucherId}_${Date.now()}.pdf`;
-
-      const pdfData = {
-        voucherNo: voucherNo || voucherId,
+      pdfPath = `uploads/receipt/Receipt_${finalVoucherNo}_${Date.now()}.pdf`;
+      const [[company]] = await pool.query("SELECT * FROM companies WHERE id = ?", [companyId]);
+      
+      await generateReceiptPDF({
+        voucherNo: finalVoucherNo,
         date: date,
         total: totalAmount,
         items: pdfItems,
         narration: narration,
-        customer: await getAccountName(receiptAccountId, companyId)
-      };
+        customer: await getAccountName(receiptAccountId, companyId),
+        company: company || {}
+      }, pdfPath);
 
-      await generateReceiptPDF(pdfData, pdfPath);
-      await pool.query(
-        `UPDATE receive_vouchers SET pdf_path = ? WHERE voucherId = ? AND companyId = ?`,
-        [pdfPath, voucherNo || voucherId, companyId]
-      );
+      await pool.query(`UPDATE receive_vouchers SET pdf_path = ? WHERE voucherId = ? AND companyId = ?`, [pdfPath, finalVoucherNo, companyId]);
     } catch (pdfErr) {
-      console.error("Error generating PDF on createReceiveVoucher:", pdfErr);
+      console.error("PDF generation failed:", pdfErr);
     }
 
-    return res.json({
-      success: true,
-      message: "Receive voucher created successfully",
-      voucherId,
-      totalAmount,
-      pdf_path: pdfPath
-    });
+    return res.json({ success: true, message: "Receive voucher created", voucherId: finalVoucherNo, totalAmount, pdf_path: pdfPath });
   } catch (err) {
     console.error("Receive Voucher Error:", err);
-    return res.status(500).json({
-      success: false,
-      message: "Server error",
-    });
+    return res.status(500).json({ success: false, message: "Server error" });
   }
 };
 
@@ -345,32 +213,7 @@ export const bulkCreateReceiveVoucher = async (req, res) => {
           SET closingBalance = COALESCE(closingBalance, 0) + ?
           WHERE name = ? AND companyId = ?
           `,
-          [amount, ledgerId, companyId] // Note: In original code it used `name = ledgerId`. This looks suspicious in original code. 
-          // Original code: WHERE name = ? ... [amount, ledgerId, companyId]
-          // If ledgerId is ID, then it should be WHERE id = ?.
-          // I will check if ledgerId is name or ID in original code logic.
-          // In ReceiveVoucher.jsx, value={row.ledgerId} is used, but in `createReceiveVoucher` it logs "ledgerId, amount". 
-          // The query `WHERE name = ?` with `ledgerId` implies `ledgerId` might be a name string?
-          // BUT in `paymentVoucherController` it uses `WHERE id = ?`.
-          // Let's assume for now it follows the original controller's pattern, effectively copying its bug if exists or its logic.
-          // Wait, in `createReceiveVoucher` (step 297), line 144: `WHERE name = ?` and param is `ledgerId`. 
-          // If `ledgerId` comes from `items`, and in frontend `row.ledgerId` comes from `l.id`, then `ledgerId` is an integer ID.
-          // So `WHERE name = ?` with an ID will fail unless name is numeric ID (unlikely).
-          // However, for bulk import, I should probably stick to `id` if I can, OR follow the exact same (potentially buggy) logic to match existing behavior.
-          // I'll stick to `WHERE name = ?` to match existing controller, BUT I suspect it might be a bug in original code.
-          // Actually, I'll use the same logic as PaymentVoucher: `WHERE id = ?` if I pass ID.
-          // If I look at `ReceiveVoucher.jsx` (Step 249), `value={l.id}`. So `ledgerId` is definitely an ID.
-          // The original controller `createReceiveVoucher` line 146 `WHERE name = ?` seems WRONG if `ledgerId` is an ID.
-          // I will fix this in my bulk controller to use `WHERE id = ?` assuming I send IDs, OR `WHERE name = ?` if I send names.
-          // Since it's Excel import, I will likely send NAMES from Excel and look them up, OR send IDs if I map them in frontend.
-          // I'll write the query to match `paymentVoucherController` logic which uses `WHERE id = ?` which is safer if I have IDs. 
-          // But wait, the prompt says "do changes in db also where needed".
-          // If I change logic here, I might break consistency.
-          // Let's look at `createReceiveVoucher` again.
-          // Line 135: `customer` column gets `ledgerId`.
-          // Database schema (Step 242) for `receive_vouchers` is NOT visible in the snippet?
-          // `receive_vouchers` table is likely `payments/receipts`. schema not fully visible.
-          // I will use `WHERE id = ?` because `ledgerId` implies ID.
+          [amount, ledgerId, companyId] 
         );
       }
     }
@@ -683,13 +526,15 @@ export const updateReceiveVoucher = async (req, res) => {
 
       pdfPath = `uploads/receipt/Receipt_${voucherNo || voucherId}_${Date.now()}.pdf`;
 
+      const [[company]] = await pool.query("SELECT * FROM companies WHERE id = ?", [activeCompanyId]);
       const pdfData = {
         voucherNo: voucherNo || voucherId,
         date: date,
         total: totalAmount,
         items: pdfItems,
         narration: narration,
-        customer: await getAccountName(receiptAccountId, activeCompanyId)
+        customer: await getAccountName(receiptAccountId, activeCompanyId),
+        company: company || {}
       };
 
       await generateReceiptPDF(pdfData, pdfPath);
@@ -698,19 +543,20 @@ export const updateReceiveVoucher = async (req, res) => {
         [pdfPath, voucherNo || voucherId, activeCompanyId]
       );
     } catch (pdfErr) {
-      console.error("Error generating PDF in updateReceiveVoucher:", pdfErr);
+      console.error("Error generating PDF on updateReceiveVoucher:", pdfErr);
     }
 
     res.json({
       success: true,
-      message: "Receipt Voucher updated successfully",
+      message: "Receive voucher updated successfully",
+      voucherId: voucherNo || voucherId,
+      totalAmount,
       pdf_path: pdfPath
     });
-
   } catch (error) {
     await conn.rollback();
-    console.error("Update Voucher Error:", error);
-    res.status(500).json({ success: false, message: "Failed to update voucher", error });
+    console.error("Error in updateReceiveVoucher:", error);
+    res.status(500).json({ success: false, message: "Error updating voucher", error: error.message });
   } finally {
     conn.release();
   }
@@ -719,43 +565,39 @@ export const updateReceiveVoucher = async (req, res) => {
 export const downloadReceiveVoucherPDF = async (req, res) => {
   const { id } = req.params;
   try {
-    const [rows] = await pool.query(
-      `SELECT * FROM receive_vouchers WHERE voucherId = ?`,
-      [id]
+    const [[voucher]] = await pool.query(`SELECT * FROM receive_vouchers WHERE id = ?`, [id]);
+    if (!voucher) return res.status(404).json({ success: false, message: "Voucher not found" });
+
+    const [entries] = await pool.query(
+      `SELECT * FROM receive_vouchers WHERE voucherId = ? AND companyId = ?`,
+      [voucher.voucherId, voucher.companyId]
     );
 
-    if (rows.length === 0) {
-      return res.status(404).json({ success: false, message: "Voucher not found" });
-    }
-
-    const firstRow = rows[0];
-    const companyId = firstRow.companyId;
-
     const items = [];
-    for (let row of rows) {
+    for (let entry of entries) {
       items.push({
-        description: await getAccountName(row.customer, companyId),
-        amount: row.amount
+        description: await getAccountName(entry.customer, voucher.companyId),
+        amount: entry.amount
       });
     }
 
-    const totalAmount = firstRow.totalAmount || rows.reduce((sum, r) => sum + Number(r.amount || 0), 0);
+    const pdfPath = `uploads/receipt/Receipt_${voucher.voucherId || id}_${Date.now()}.pdf`;
 
-    const pdfPath = `uploads/receipt/Receipt_${firstRow.voucherId || id}_${Date.now()}.pdf`;
-
+    const [[company]] = await pool.query("SELECT * FROM companies WHERE id = ?", [voucher.companyId]);
     const pdfData = {
-      voucherNo: firstRow.voucherId || id,
-      date: firstRow.date,
-      total: totalAmount,
+      voucherNo: voucher.voucherId || id,
+      date: voucher.date,
+      total: voucher.totalAmount,
       items,
-      narration: firstRow.narration,
-      customer: await getAccountName(firstRow.receiptAccountId, companyId)
+      narration: voucher.narration,
+      customer: await getAccountName(voucher.receiptAccountId, voucher.companyId),
+      company: company || {}
     };
 
     await generateReceiptPDF(pdfData, pdfPath);
     await pool.query(
       `UPDATE receive_vouchers SET pdf_path = ? WHERE voucherId = ? AND companyId = ?`,
-      [pdfPath, firstRow.voucherId, companyId]
+      [pdfPath, voucher.voucherId, voucher.companyId]
     );
 
     res.download(path.join(process.cwd(), pdfPath));
@@ -764,4 +606,3 @@ export const downloadReceiveVoucherPDF = async (req, res) => {
     res.status(500).json({ success: false, message: "Error generating PDF", error: error.message });
   }
 };
-
