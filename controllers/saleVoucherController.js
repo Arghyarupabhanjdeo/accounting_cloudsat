@@ -16,6 +16,7 @@ export const createSalesVoucher = async (req, res) => {
     gst_percentage,
     gst_amount,
     grand_total,
+    round_off,
     narration,
     invoiceNo,
     items,
@@ -105,7 +106,7 @@ export const createSalesVoucher = async (req, res) => {
     const insertVoucherQuery = `
       INSERT INTO sales_vouchers (
         companyId, date, customer, ledgerId, subtotal, gst_percentage,
-        gst_amount, grand_total, narration, invoiceNo, igst, cgst, sgst,
+        gst_amount, grand_total, round_off, narration, invoiceNo, igst, cgst, sgst,
         ewayBillNo, ewayBillDate,
         consignorName, consignorGSTIN, consignorState,
         consignorPincode, consignorAddress, consignorEmail,
@@ -123,7 +124,7 @@ export const createSalesVoucher = async (req, res) => {
         igst_rate, cgst_rate, sgst_rate, carrierName,
         consigneeSameAsBilling, paymentTerms, otherReferences
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
               ?, ?, ?, ?, ?, ?, ?, ?,
               ?, ?, ?, ?, ?, ?,
               ?, ?,
@@ -143,6 +144,7 @@ export const createSalesVoucher = async (req, res) => {
       gst_percentage,
       gst_amount,
       grand_total,
+      round_off || 0,
       narration,
       invoiceNo,
       igst || 0,
@@ -383,7 +385,7 @@ country: sender.country || "",
     };
 
     // 4️⃣ Generate PDF using professional format
-    const generatedPdfPath = await generateDocumentPDF(pdfData, "TAX INVOICE", pdfFileName, "sales");
+    const generatedPdfPath = await generateDocumentPDF(pdfData, "SALES VOUCHER", pdfFileName, "sales");
 
     // Update DB with PDF path
     await connection.query(
@@ -438,7 +440,7 @@ export const updateSaleVoucher = async (req, res) => {
   const { id } = req.params;
   const {
     companyId, date, customer, ledgerId, subtotal, gst_percentage, gst_amount,
-    grand_total, narration, invoiceNo, igst, cgst, sgst, items, ewayBillDetails = {},
+    grand_total, round_off, narration, invoiceNo, igst, cgst, sgst, items, ewayBillDetails = {},
     paymentTerms, otherReferences, buyerOrderNo, buyerOrderDate, deliveryNoteDate, termsOfDelivery,
     consigneeName: reqBodyConsigneeName,
     consigneeGSTIN: reqBodyConsigneeGSTIN,
@@ -524,7 +526,7 @@ export const updateSaleVoucher = async (req, res) => {
 
     await connection.query(
       `UPDATE sales_vouchers 
-       SET date=?, customer=?, ledgerId=?, subtotal=?, gst_percentage=?, gst_amount=?, grand_total=?,
+       SET date=?, customer=?, ledgerId=?, subtotal=?, gst_percentage=?, gst_amount=?, grand_total=?, round_off=?,
            narration=?, invoiceNo=?, pincode=?, igst=?, cgst=?, sgst=?,
            ewayBillNo=?, ewayBillDate=?, 
            consignorName=?, consignorGSTIN=?, consignorState=?, consignorPincode=?, consignorAddress=?, consignorEmail=?,
@@ -541,7 +543,7 @@ export const updateSaleVoucher = async (req, res) => {
            consigneeSameAsBilling=?
        WHERE id=?`,
       [
-        date, customer, ledgerId, subtotal, gst_percentage, gst_amount, grand_total,
+        date, customer, ledgerId, subtotal, gst_percentage, gst_amount, grand_total, round_off || 0,
         narration, invoiceNo, pincode || null, igst || 0, cgst || 0, sgst || 0,
         ewayBillNo, ewayBillDate,
         consignorName, consignorGSTIN, consignorState, consignorPincode, consignorAddress, consignorEmail,
@@ -677,7 +679,7 @@ export const updateSaleVoucher = async (req, res) => {
       }
     };
 
-    const generatedPdfPath = await generateDocumentPDF(pdfData, "TAX INVOICE", pdfFileName, "sales");
+    const generatedPdfPath = await generateDocumentPDF(pdfData, "SALES VOUCHER", pdfFileName, "sales");
 
     await connection.query(
       `UPDATE sales_vouchers SET pdf_path = ? WHERE id = ?`,
@@ -700,9 +702,12 @@ export const getSaleVoucher = async (req, res) => {
 
   try {
     const [rows] = await pool.query(
-      `SELECT sales_vouchers.*, DATE_FORMAT(date, '%Y-%m-%d') AS date
+      `SELECT sales_vouchers.*, 
+              DATE_FORMAT(sales_vouchers.date, '%Y-%m-%d') AS date,
+              users.name AS creator_name
        FROM sales_vouchers
-       WHERE companyId = ?`,
+       LEFT JOIN users ON sales_vouchers.created_by_user_id = users.id
+       WHERE sales_vouchers.companyId = ?`,
       [companyId]
     );
     console.log("data is =>", rows);
@@ -745,7 +750,7 @@ export const ewaybill = async (req, res) => {
 
   try {
     const [rows] = await pool.query(
-      `SELECT id, invoiceNo, date, customer, grand_total, ewayBillNo, ewayBillDate, consignorName, consignorGSTIN, consignorState, consignorPincode, consignorAddress, consigneeName, consigneeGSTIN, consigneeState, consigneePincode, consigneeAddress, distanceKM, vehicleNumber FROM sales_vouchers WHERE companyId = ? AND ewayBillNo IS NOT NULL AND ewayBillNo != ''`,
+      `SELECT id, invoiceNo, date, customer, grand_total, round_off, ewayBillNo, ewayBillDate, consignorName, consignorGSTIN, consignorState, consignorPincode, consignorAddress, consigneeName, consigneeGSTIN, consigneeState, consigneePincode, consigneeAddress, distanceKM, vehicleNumber FROM sales_vouchers WHERE companyId = ? AND ewayBillNo IS NOT NULL AND ewayBillNo != ''`,
       [companyId]
     );
 
@@ -1268,7 +1273,7 @@ export const downloadSaleVoucherPDF = async (req, res) => {
       }
     };
 
-    const generatedPdfPath = await generateDocumentPDF(pdfData, "TAX INVOICE", pdfFileName, "sales");
+    const generatedPdfPath = await generateDocumentPDF(pdfData, "SALES VOUCHER", pdfFileName, "sales");
 
     await pool.query(
       `UPDATE sales_vouchers SET pdf_path = ? WHERE id = ?`,

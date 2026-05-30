@@ -218,11 +218,12 @@ export const getAllPaymentVouchers = async (req, res) => {
 
   try {
     const [rows] = await pool.query(
-      `SELECT id, companyId, voucherNo, DATE_FORMAT(date, '%Y-%m-%d') AS date, accountType, narration, SUM(amount) AS amount, totalAmount, pdf_path
-       FROM payment_vouchers 
-       WHERE companyId = ?
-       GROUP BY IFNULL(NULLIF(voucherNo, ''), id)
-       ORDER BY id DESC`,
+      `SELECT p.id, p.companyId, p.voucherNo, DATE_FORMAT(p.date, '%Y-%m-%d') AS date, p.accountType, p.narration, SUM(p.amount) AS amount, p.totalAmount, p.pdf_path, MAX(p.created_by_user_id) AS created_by_user_id, MAX(p.created_by_employee_id) AS created_by_employee_id, MAX(u.name) AS creator_name
+       FROM payment_vouchers p
+       LEFT JOIN users u ON p.created_by_user_id = u.id
+       WHERE p.companyId = ?
+       GROUP BY IFNULL(NULLIF(p.voucherNo, ''), p.id)
+       ORDER BY MAX(p.id) DESC`,
       [companyId]
     );
 

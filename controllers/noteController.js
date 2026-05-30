@@ -9,7 +9,7 @@ export const createDebitNote = async (req, res) => {
     await ensureCreatorColumns(pool, "notes");
     const {
       voucherNo, date, partyLedger, purchaseLedger, partyDetails, dispatchDetails, consignorDetails = {}, narration, items,
-      subtotal, gst_amount, igst_rate, cgst_rate, sgst_rate, igst_amount, cgst_amount, sgst_amount, grand_total
+      subtotal, gst_amount, igst_rate, cgst_rate, sgst_rate, igst_amount, cgst_amount, sgst_amount, grand_total, round_off
     } = req.body;
 
     if (!items || !Array.isArray(items) || items.length === 0) {
@@ -24,10 +24,10 @@ export const createDebitNote = async (req, res) => {
         buyerOrderNo, buyerOrderDate, dispatchDocNo, dispatchedThrough, destination, carrierName, 
         billOfLading, billOfLadingDate, motorVehicleNo, dispatchDate, termsOfDelivery,
         consigneeSameAsBilling, consigneeName, consigneeGSTIN, consigneeAddress, consigneeState, 
-        subtotal, gst_amount, igst_rate, cgst_rate, sgst_rate, igst_amount, cgst_amount, sgst_amount, grand_total,
+        subtotal, gst_amount, igst_rate, cgst_rate, sgst_rate, igst_amount, cgst_amount, sgst_amount, grand_total, round_off,
         consignorName, consignorGSTIN, consignorState, consignorPincode, consignorAddress, consignorEmail,
         created_by_user_id, created_by_employee_id)
-       VALUES (?, ?, ?, ?, ?, ?, "debit", ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, "debit", ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         companyId, voucherNo, date, partyLedger || null, purchaseLedger || null, narration,
         partyDetails?.mailingName, partyDetails?.address, partyDetails?.state, partyDetails?.country, partyDetails?.pincode,
@@ -40,7 +40,7 @@ export const createDebitNote = async (req, res) => {
         dispatchDetails?.dispatchDate || null, dispatchDetails?.termsOfDelivery || null,
         dispatchDetails?.consigneeSameAsBilling ? 1 : 0, dispatchDetails?.consigneeName, dispatchDetails?.consigneeGSTIN,
         dispatchDetails?.consigneeAddress, dispatchDetails?.consigneeState,
-        subtotal, gst_amount, igst_rate, cgst_rate, sgst_rate, igst_amount, cgst_amount, sgst_amount, grand_total,
+        subtotal, gst_amount, igst_rate, cgst_rate, sgst_rate, igst_amount, cgst_amount, sgst_amount, grand_total, round_off || 0,
         consignorDetails?.consignorName || null, consignorDetails?.consignorGSTIN || null, consignorDetails?.consignorState || null,
         consignorDetails?.consignorPincode || null, consignorDetails?.consignorAddress || null, consignorDetails?.consignorEmail || null,
         creator.userId, creator.employeeId
@@ -81,7 +81,7 @@ export const createCreditNote = async (req, res) => {
     await ensureCreatorColumns(pool, "notes");
     const {
       voucherNo, date, partyLedger, purchaseLedger, partyDetails, dispatchDetails, consignorDetails = {}, narration, items,
-      subtotal, gst_amount, igst_rate, cgst_rate, sgst_rate, igst_amount, cgst_amount, sgst_amount, grand_total
+      subtotal, gst_amount, igst_rate, cgst_rate, sgst_rate, igst_amount, cgst_amount, sgst_amount, grand_total, round_off
     } = req.body;
 
     if (!items || !Array.isArray(items) || items.length === 0) {
@@ -99,10 +99,10 @@ export const createCreditNote = async (req, res) => {
         buyerOrderNo, buyerOrderDate, dispatchDocNo, dispatchedThrough, destination, carrierName, 
         billOfLading, billOfLadingDate, motorVehicleNo, dispatchDate, termsOfDelivery,
         consigneeSameAsBilling, consigneeName, consigneeGSTIN, consigneeAddress, consigneeState, 
-        subtotal, gst_amount, igst_rate, cgst_rate, sgst_rate, igst_amount, cgst_amount, sgst_amount, grand_total,
+        subtotal, gst_amount, igst_rate, cgst_rate, sgst_rate, igst_amount, cgst_amount, sgst_amount, grand_total, round_off,
         consignorName, consignorGSTIN, consignorState, consignorPincode, consignorAddress, consignorEmail,
         created_by_user_id, created_by_employee_id)
-       VALUES (?, ?, ?, ?, ?, ?, "credit", ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, "credit", ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         companyId, voucherNo, date, partyLedger || null, purchaseLedger || null, narration,
         partyDetails?.mailingName, partyDetails?.address, partyDetails?.state, partyDetails?.country, partyDetails?.pincode,
@@ -115,7 +115,7 @@ export const createCreditNote = async (req, res) => {
         sanitizeDate(dispatchDetails?.dispatchDate), dispatchDetails?.termsOfDelivery || null,
         dispatchDetails?.consigneeSameAsBilling ? 1 : 0, dispatchDetails?.consigneeName, dispatchDetails?.consigneeGSTIN,
         dispatchDetails?.consigneeAddress, dispatchDetails?.consigneeState,
-        subtotal, gst_amount, igst_rate, cgst_rate, sgst_rate, igst_amount, cgst_amount, sgst_amount, grand_total,
+        subtotal, gst_amount, igst_rate, cgst_rate, sgst_rate, igst_amount, cgst_amount, sgst_amount, grand_total, round_off || 0,
         consignorDetails?.consignorName || null, consignorDetails?.consignorGSTIN || null, consignorDetails?.consignorState || null,
         consignorDetails?.consignorPincode || null, consignorDetails?.consignorAddress || null, consignorDetails?.consignorEmail || null,
         creator.userId, creator.employeeId
@@ -204,6 +204,7 @@ export const getNotePDF = async (req, res) => {
       cgst_amount: note.cgst_amount,
       sgst_amount: note.sgst_amount,
       grand_total: note.grand_total,
+      round_off: note.round_off || 0,
       narration: note.narration,
       sender: {
         company_name: note.consignorName || company.name || "",
@@ -234,7 +235,7 @@ export const updateDebitNote = async (req, res) => {
   try {
     const {
       voucherNo, date, partyLedger, purchaseLedger, partyDetails, dispatchDetails, consignorDetails = {}, narration, items,
-      subtotal, gst_amount, igst_rate, cgst_rate, sgst_rate, igst_amount, cgst_amount, sgst_amount, grand_total
+      subtotal, gst_amount, igst_rate, cgst_rate, sgst_rate, igst_amount, cgst_amount, sgst_amount, grand_total, round_off
     } = req.body;
 
     // Convert empty strings to null for date fields
@@ -248,7 +249,7 @@ export const updateDebitNote = async (req, res) => {
         buyerOrderNo=?, buyerOrderDate=?, dispatchDocNo=?, dispatchedThrough=?, destination=?, carrierName=?, 
         billOfLading=?, billOfLadingDate=?, motorVehicleNo=?, dispatchDate=?, termsOfDelivery=?,
         consigneeSameAsBilling=?, consigneeName=?, consigneeGSTIN=?, consigneeAddress=?, consigneeState=?, 
-        subtotal=?, gst_amount=?, igst_rate=?, cgst_rate=?, sgst_rate=?, igst_amount=?, cgst_amount=?, sgst_amount=?, grand_total=?,
+        subtotal=?, gst_amount=?, igst_rate=?, cgst_rate=?, sgst_rate=?, igst_amount=?, cgst_amount=?, sgst_amount=?, grand_total=?, round_off=?,
         consignorName=?, consignorGSTIN=?, consignorState=?, consignorPincode=?, consignorAddress=?, consignorEmail=?
       WHERE id = ?`,
       [
@@ -263,7 +264,7 @@ export const updateDebitNote = async (req, res) => {
         sanitizeDate(dispatchDetails?.dispatchDate), dispatchDetails?.termsOfDelivery || null,
         dispatchDetails?.consigneeSameAsBilling ? 1 : 0, dispatchDetails?.consigneeName, dispatchDetails?.consigneeGSTIN,
         dispatchDetails?.consigneeAddress, dispatchDetails?.consigneeState,
-        subtotal, gst_amount, igst_rate, cgst_rate, sgst_rate, igst_amount, cgst_amount, sgst_amount, grand_total,
+        subtotal, gst_amount, igst_rate, cgst_rate, sgst_rate, igst_amount, cgst_amount, sgst_amount, grand_total, round_off || 0,
         consignorDetails?.consignorName || null, consignorDetails?.consignorGSTIN || null, consignorDetails?.consignorState || null,
         consignorDetails?.consignorPincode || null, consignorDetails?.consignorAddress || null, consignorDetails?.consignorEmail || null,
         noteId
@@ -291,7 +292,7 @@ export const updateCreditNote = async (req, res) => {
   try {
     const {
       voucherNo, date, partyLedger, purchaseLedger, partyDetails, dispatchDetails, consignorDetails = {}, narration, items,
-      subtotal, gst_amount, igst_rate, cgst_rate, sgst_rate, igst_amount, cgst_amount, sgst_amount, grand_total
+      subtotal, gst_amount, igst_rate, cgst_rate, sgst_rate, igst_amount, cgst_amount, sgst_amount, grand_total, round_off
     } = req.body;
 
     // Convert empty strings to null for date fields
@@ -305,7 +306,7 @@ export const updateCreditNote = async (req, res) => {
         buyerOrderNo=?, buyerOrderDate=?, dispatchDocNo=?, dispatchedThrough=?, destination=?, carrierName=?, 
         billOfLading=?, billOfLadingDate=?, motorVehicleNo=?, dispatchDate=?, termsOfDelivery=?,
         consigneeSameAsBilling=?, consigneeName=?, consigneeGSTIN=?, consigneeAddress=?, consigneeState=?, 
-        subtotal=?, gst_amount=?, igst_rate=?, cgst_rate=?, sgst_rate=?, igst_amount=?, cgst_amount=?, sgst_amount=?, grand_total=?,
+        subtotal=?, gst_amount=?, igst_rate=?, cgst_rate=?, sgst_rate=?, igst_amount=?, cgst_amount=?, sgst_amount=?, grand_total=?, round_off=?,
         consignorName=?, consignorGSTIN=?, consignorState=?, consignorPincode=?, consignorAddress=?, consignorEmail=?
       WHERE id = ?`,
       [
@@ -320,7 +321,7 @@ export const updateCreditNote = async (req, res) => {
         sanitizeDate(dispatchDetails?.dispatchDate), dispatchDetails?.termsOfDelivery || null,
         dispatchDetails?.consigneeSameAsBilling ? 1 : 0, dispatchDetails?.consigneeName, dispatchDetails?.consigneeGSTIN,
         dispatchDetails?.consigneeAddress, dispatchDetails?.consigneeState,
-        subtotal, gst_amount, igst_rate, cgst_rate, sgst_rate, igst_amount, cgst_amount, sgst_amount, grand_total,
+        subtotal, gst_amount, igst_rate, cgst_rate, sgst_rate, igst_amount, cgst_amount, sgst_amount, grand_total, round_off || 0,
         consignorDetails?.consignorName || null, consignorDetails?.consignorGSTIN || null, consignorDetails?.consignorState || null,
         consignorDetails?.consignorPincode || null, consignorDetails?.consignorAddress || null, consignorDetails?.consignorEmail || null,
         noteId

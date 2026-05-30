@@ -121,11 +121,12 @@ export const getReceiveVoucher = async (req, res) => {
   const { companyId } = req.params
   try {
     const [rows] = await pool.query(
-      `SELECT id, voucherId, companyId, DATE_FORMAT(date, '%Y-%m-%d') AS date, receiptAccountId, instrumentType, referenceNo, narration, customer, SUM(amount) AS amount, totalAmount, pdf_path
-       FROM receive_vouchers 
-       WHERE companyId = ?
-       GROUP BY IFNULL(NULLIF(voucherId, ''), id)
-       ORDER BY id DESC`,
+      `SELECT r.id, r.voucherId, r.companyId, DATE_FORMAT(r.date, '%Y-%m-%d') AS date, r.receiptAccountId, r.instrumentType, r.referenceNo, r.narration, r.customer, SUM(r.amount) AS amount, r.totalAmount, r.pdf_path, MAX(r.created_by_user_id) AS created_by_user_id, MAX(r.created_by_employee_id) AS created_by_employee_id, MAX(u.name) AS creator_name
+       FROM receive_vouchers r
+       LEFT JOIN users u ON r.created_by_user_id = u.id
+       WHERE r.companyId = ?
+       GROUP BY IFNULL(NULLIF(r.voucherId, ''), r.id)
+       ORDER BY MAX(r.id) DESC`,
       [companyId]
     );
     const data = rows.map((row) => ({

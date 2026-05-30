@@ -47,6 +47,9 @@ export const generateDocumentPDF = async (data, type, fileName, subDir) => {
             const stream = fs.createWriteStream(filePath);
             doc.pipe(stream);
 
+            doc.registerFont('Roboto', path.join('assets', 'fonts', 'Roboto-Regular.ttf'));
+            doc.registerFont('Roboto-Bold', path.join('assets', 'fonts', 'Roboto-Bold.ttf'));
+
             // --- CONSTANTS ---
             const MARGIN = 30;
             const PAGE_WIDTH = 595.28;
@@ -63,7 +66,7 @@ export const generateDocumentPDF = async (data, type, fileName, subDir) => {
             //     `\u20B9 ${Number(amount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
 
             const formatCurrency = (amount) => {
-                return "Rs. " + Number(amount || 0).toFixed(2);
+                return "₹ " + Number(amount || 0).toFixed(2);
             };
 
             const formatDate = (dateStr) => {
@@ -107,7 +110,7 @@ export const generateDocumentPDF = async (data, type, fileName, subDir) => {
             // DOCUMENT TITLE
             // ─────────────────────────────────────────────
             let y = MARGIN;
-            doc.fontSize(12).font("Helvetica-Bold").text(type || "Tax Invoice", MARGIN, y, { align: 'center', width: CONTENT_WIDTH });
+            doc.fontSize(12).font("Roboto-Bold").text(type || "Tax Invoice", MARGIN, y, { align: 'center', width: CONTENT_WIDTH });
             y += 18;
 
             // ─────────────────────────────────────────────
@@ -130,7 +133,7 @@ export const generateDocumentPDF = async (data, type, fileName, subDir) => {
             // ── LEFT SIDE ──
 
             // Seller info
-            doc.fontSize(11).font("Helvetica-Bold").text(data.sender.company_name || "Cloudsat Private Limited", MARGIN + 5, headerStartY + 5);
+            doc.fontSize(11).font("Roboto-Bold").text(data.sender.company_name || "Cloudsat Private Limited", MARGIN + 5, headerStartY + 5);
 
             let sellerAddrY = headerStartY + 18;
            let sellerAddressStr = data.sender.address || "";
@@ -146,19 +149,19 @@ if (data.sender.country)
 
 if (data.sender.pincode)
   sellerAddressStr += (sellerAddressStr ? " - " : "") + data.sender.pincode;
-            doc.fontSize(8).font("Helvetica").text(sellerAddressStr, MARGIN + 5, sellerAddrY, { width: (CONTENT_WIDTH * 0.5) - 10 });
+            doc.fontSize(8).font("Roboto").text(sellerAddressStr, MARGIN + 5, sellerAddrY, { width: (CONTENT_WIDTH * 0.5) - 10 });
             sellerAddrY = doc.y;
 
             let currentLeftY = sellerAddrY + 2;
             if (data.sender.gst) {
-                doc.fontSize(8).font("Helvetica-Bold").text("GSTIN/UIN: ", MARGIN + 5, currentLeftY, { continued: true });
-                doc.font("Helvetica").text(data.sender.gst);
+                doc.fontSize(8).font("Roboto-Bold").text("GSTIN/UIN: ", MARGIN + 5, currentLeftY, { continued: true });
+                doc.font("Roboto").text(data.sender.gst);
                 currentLeftY = doc.y;
             }
             if (data.sender.state_name) {
-                doc.fontSize(8).font("Helvetica-Bold").text("State Name : ", MARGIN + 5, currentLeftY, { continued: true });
-                // doc.font("Helvetica").text(`${data.sender.state_name}, Code : `);
-             doc.font("Helvetica").text(
+                doc.fontSize(8).font("Roboto-Bold").text("State Name : ", MARGIN + 5, currentLeftY, { continued: true });
+                // doc.font("Roboto").text(`${data.sender.state_name}, Code : `);
+             doc.font("Roboto").text(
   `${data.sender.state_name || ""}`
 );
                 currentLeftY = doc.y;
@@ -169,8 +172,8 @@ if (data.sender.pincode)
             const consigneeStartY = headerStartY + logisticsRowHeight * 2;
             doc.moveTo(MARGIN, consigneeStartY).lineTo(COL_LEFT_DIVIDER, consigneeStartY).stroke();
 
-            doc.fontSize(8).font("Helvetica").text("Consignee (Ship to):", MARGIN + 5, consigneeStartY + 2);
-            doc.fontSize(9).font("Helvetica-Bold").text(
+            doc.fontSize(8).font("Roboto").text("Consignee (Ship to):", MARGIN + 5, consigneeStartY + 2);
+            doc.fontSize(9).font("Roboto-Bold").text(
                 data.shipping_details?.consigneeName || data.client.name, MARGIN + 5, consigneeStartY + 12
             );
 
@@ -183,18 +186,18 @@ if (data.sender.pincode)
             if (data.client?.country) consAddressStr += (consAddressStr ? ", " : "") + data.client.country;
             if (shipPin) consAddressStr += (consAddressStr ? " - " : "") + shipPin;
 
-            doc.fontSize(8).font("Helvetica").text(consAddressStr, MARGIN + 5, consAddrY, { width: (CONTENT_WIDTH * 0.5) - 10 });
+            doc.fontSize(8).font("Roboto").text(consAddressStr, MARGIN + 5, consAddrY, { width: (CONTENT_WIDTH * 0.5) - 10 });
             consAddrY = doc.y;
 
             let consigneeGstY = Math.max(consigneeStartY + 55, consAddrY + 2);
             if (data.shipping_details?.consigneeGSTIN || data.client?.gst) {
-                doc.fontSize(8).font("Helvetica-Bold").text("GSTIN/UIN : ", MARGIN + 5, consigneeGstY, { continued: true });
-                doc.font("Helvetica").text(data.shipping_details?.consigneeGSTIN || data.client?.gst);
+                doc.fontSize(8).font("Roboto-Bold").text("GSTIN/UIN : ", MARGIN + 5, consigneeGstY, { continued: true });
+                doc.font("Roboto").text(data.shipping_details?.consigneeGSTIN || data.client?.gst);
                 consigneeGstY = doc.y;
             }
             if (data.shipping_details?.consigneeState || data.client?.state_name) {
-                doc.fontSize(8).font("Helvetica-Bold").text("State Name : ", MARGIN + 5, consigneeGstY, { continued: true });
-                doc.font("Helvetica").text(data.shipping_details?.consigneeState || data.client?.state_name);
+                doc.fontSize(8).font("Roboto-Bold").text("State Name : ", MARGIN + 5, consigneeGstY, { continued: true });
+                doc.font("Roboto").text(data.shipping_details?.consigneeState || data.client?.state_name);
             }
 
             const isPurchase = type?.toUpperCase().includes("PURCHASE");
@@ -204,8 +207,8 @@ if (data.sender.pincode)
             const buyerStartY = headerStartY + logisticsRowHeight * 5;
             doc.moveTo(MARGIN, buyerStartY).lineTo(COL_LEFT_DIVIDER, buyerStartY).stroke();
 
-            doc.fontSize(8).font("Helvetica").text(isPurchase ? "Supplier (Bill from):" : "Buyer (Bill to):", MARGIN + 5, buyerStartY + 2);
-            doc.fontSize(9).font("Helvetica-Bold").text(isPurchase ? (data.supplier?.name || data.customer || "") : data.client.name, MARGIN + 5, buyerStartY + 12);
+            doc.fontSize(8).font("Roboto").text(isPurchase ? "Supplier (Bill from):" : "Buyer (Bill to):", MARGIN + 5, buyerStartY + 2);
+            doc.fontSize(9).font("Roboto-Bold").text(isPurchase ? (data.supplier?.name || data.customer || "") : data.client.name, MARGIN + 5, buyerStartY + 12);
 
             let buyerAddrY = buyerStartY + 23;
             let buyerAddressStr = "";
@@ -222,18 +225,18 @@ if (data.sender.pincode)
                 if (data.client.pincode) buyerAddressStr += (buyerAddressStr ? " - " : "") + data.client.pincode;
             }
 
-            doc.fontSize(8).font("Helvetica").text(buyerAddressStr, MARGIN + 5, buyerAddrY, { width: (CONTENT_WIDTH * 0.5) - 10 });
+            doc.fontSize(8).font("Roboto").text(buyerAddressStr, MARGIN + 5, buyerAddrY, { width: (CONTENT_WIDTH * 0.5) - 10 });
             buyerAddrY = doc.y;
 
             let buyerGstY = Math.max(buyerStartY + 55, buyerAddrY + 2);
             if (isPurchase ? data.supplier?.gst : data.client.gst) {
-                doc.fontSize(8).font("Helvetica-Bold").text("GSTIN/UIN : ", MARGIN + 5, buyerGstY, { continued: true });
-                doc.font("Helvetica").text(isPurchase ? data.supplier?.gst : data.client.gst);
+                doc.fontSize(8).font("Roboto-Bold").text("GSTIN/UIN : ", MARGIN + 5, buyerGstY, { continued: true });
+                doc.font("Roboto").text(isPurchase ? data.supplier?.gst : data.client.gst);
                 buyerGstY = doc.y;
             }
             if (isPurchase ? data.supplier?.state_name : data.client.state_name) {
-                doc.fontSize(8).font("Helvetica-Bold").text("State Name : ", MARGIN + 5, buyerGstY, { continued: true });
-                doc.font("Helvetica").text(isPurchase ? data.supplier?.state_name : data.client.state_name);
+                doc.fontSize(8).font("Roboto-Bold").text("State Name : ", MARGIN + 5, buyerGstY, { continued: true });
+                doc.font("Roboto").text(isPurchase ? data.supplier?.state_name : data.client.state_name);
             }
 
             // ── RIGHT SIDE (Logistics Rows) ──
@@ -263,19 +266,19 @@ if (data.sender.pincode)
                 }
 
                 // Left sub-column content
-                doc.fontSize(8).font("Helvetica").text(label1, COL_LEFT_DIVIDER + 3, currentRightY + 3, {
+                doc.fontSize(8).font("Roboto").text(label1, COL_LEFT_DIVIDER + 3, currentRightY + 3, {
                     width: RIGHT_INNER_DIVIDER_OFFSET - 5
                 });
-                doc.fontSize(8).font("Helvetica-Bold").text(value1 || "-", COL_LEFT_DIVIDER + 3, currentRightY + 13, {
+                doc.fontSize(8).font("Roboto-Bold").text(value1 || "-", COL_LEFT_DIVIDER + 3, currentRightY + 13, {
                     width: RIGHT_INNER_DIVIDER_OFFSET - 5
                 });
 
                 // Right sub-column content
                 if (label2 !== null) {
-                    doc.fontSize(8).font("Helvetica").text(label2 || "", innerDivX + 3, currentRightY + 3, {
+                    doc.fontSize(8).font("Roboto").text(label2 || "", innerDivX + 3, currentRightY + 3, {
                         width: RIGHT_INNER_DIVIDER_OFFSET - 5
                     });
-                    doc.fontSize(8).font("Helvetica-Bold").text(value2 || "-", innerDivX + 3, currentRightY + 13, {
+                    doc.fontSize(8).font("Roboto-Bold").text(value2 || "-", innerDivX + 3, currentRightY + 13, {
                         width: RIGHT_INNER_DIVIDER_OFFSET - 5
                     });
                 }
@@ -310,8 +313,8 @@ if (data.sender.pincode)
 
             // Terms of Delivery row: full-width, no inner divider
             // Height is the same as other logistics rows
-            doc.fontSize(8).font("Helvetica").text("Terms of Delivery", COL_LEFT_DIVIDER + 3, currentRightY + 3);
-            doc.fontSize(8).font("Helvetica-Bold").text(
+            doc.fontSize(8).font("Roboto").text("Terms of Delivery", COL_LEFT_DIVIDER + 3, currentRightY + 3);
+            doc.fontSize(8).font("Roboto-Bold").text(
                 data.shipping_details?.delivery_terms || data.terms || "-",
                 COL_LEFT_DIVIDER + 3, currentRightY + 13,
                 { width: (CONTENT_WIDTH * 0.5) - 8 }
@@ -335,12 +338,12 @@ if (data.sender.pincode)
 
             // Column X positions
             const colSI = MARGIN;
-            const colDesc = MARGIN + 30;
-            const colHSN = MARGIN + 220;
-            const colQty = MARGIN + 280;
-            const colRate = MARGIN + 355;
-            const colPer = MARGIN + 420;
-            const colAmount = MARGIN + 465;
+            const colDesc = MARGIN + 35;
+            const colHSN = MARGIN + 200;
+            const colQty = MARGIN + 260;
+            const colRate = MARGIN + 330;
+            const colPer = MARGIN + 400;
+            const colAmount = MARGIN + 445;
 
             const tableHeaderHeight = 20;
             const PAGE_BOTTOM_LIMIT = 760;
@@ -350,14 +353,14 @@ if (data.sender.pincode)
                 [colDesc, colHSN, colQty, colRate, colPer, colAmount].forEach(x =>
                     doc.moveTo(x, yPos).lineTo(x, yPos + tableHeaderHeight).stroke()
                 );
-                doc.fontSize(8).font("Helvetica-Bold");
-                doc.text("SI\nNo.", colSI + 2, yPos + 3, { width: colDesc - colSI - 4, align: 'center' });
+                doc.fontSize(8).font("Roboto-Bold");
+                doc.text("Sl No.", colSI + 2, yPos + 6, { width: colDesc - colSI - 4, align: 'center' });
                 doc.text("Description of Goods", colDesc + 4, yPos + 6);
                 doc.text("HSN/SAC", colHSN + 2, yPos + 6, { width: colQty - colHSN - 4, align: 'center' });
                 doc.text("Quantity", colQty + 2, yPos + 6, { width: colRate - colQty - 4, align: 'center' });
                 doc.text("Rate", colRate + 2, yPos + 6, { width: colPer - colRate - 4, align: 'center' });
                 doc.text("per", colPer + 2, yPos + 6, { width: colAmount - colPer - 4, align: 'center' });
-                doc.text("Amount", colAmount + 2, yPos + 6, { width: MARGIN + CONTENT_WIDTH - colAmount - 4, align: 'right' });
+                doc.text("Amount (₹)", colAmount + 2, yPos + 6, { width: MARGIN + CONTENT_WIDTH - colAmount - 4, align: 'right' });
                 return yPos + tableHeaderHeight;
             };
 
@@ -372,9 +375,9 @@ if (data.sender.pincode)
 
             data.items.forEach((item, i) => {
                 // Calculate item row height
-                doc.fontSize(9).font("Helvetica-Bold");
+                doc.fontSize(9).font("Roboto-Bold");
                 const nameH = doc.heightOfString(item.itemname || "-", { width: colHSN - colDesc - 8 });
-                doc.fontSize(8).font("Helvetica");
+                doc.fontSize(8).font("Roboto");
                 const descH = item.description ? doc.heightOfString(item.description, { width: colHSN - colDesc - 8 }) : 0;
                 const rowHeight = Math.max(nameH + descH + 8, 20);
 
@@ -393,18 +396,18 @@ if (data.sender.pincode)
                 const rowStartY = currentItemY;
 
                 // Draw Row content
-                doc.fontSize(9).font("Helvetica").text(`${i + 1}`, colSI + 2, rowStartY + 5, { width: colDesc - colSI - 4, align: 'center' });
-                doc.font("Helvetica-Bold").text(item.itemname || "-", colDesc + 4, rowStartY + 5, { width: colHSN - colDesc - 8 });
+                doc.fontSize(9).font("Roboto").text(`${i + 1}`, colSI + 2, rowStartY + 5, { width: colDesc - colSI - 4, align: 'center' });
+                doc.font("Roboto-Bold").text(item.itemname || "-", colDesc + 4, rowStartY + 5, { width: colHSN - colDesc - 8 });
                 if (item.description) {
-                    doc.fontSize(8).font("Helvetica");
-                    const currentNameH = doc.heightOfString(item.itemname || "-", { width: colHSN - colDesc - 8, font: "Helvetica-Bold", fontSize: 9 });
+                    doc.fontSize(8).font("Roboto");
+                    const currentNameH = doc.heightOfString(item.itemname || "-", { width: colHSN - colDesc - 8, font: "Roboto-Bold", fontSize: 9 });
                     doc.text(item.description, colDesc + 4, rowStartY + 5 + currentNameH, { width: colHSN - colDesc - 8 });
                 }
-                doc.fontSize(9).font("Helvetica").text(item.hsnno || "-", colHSN + 2, rowStartY + 5, { width: colQty - colHSN - 4, align: 'center' });
-                doc.font("Helvetica-Bold").text(`${item.quantity}${item.per ? ' ' + item.per : ''}`, colQty + 2, rowStartY + 5, { width: colRate - colQty - 4, align: 'center' });
+                doc.fontSize(9).font("Roboto").text(item.hsnno || "-", colHSN + 2, rowStartY + 5, { width: colQty - colHSN - 4, align: 'center' });
+                doc.font("Roboto-Bold").text(`${item.quantity}${item.per ? ' ' + item.per : ''}`, colQty + 2, rowStartY + 5, { width: colRate - colQty - 4, align: 'center' });
                 doc.text(Number(item.unitprice || 0).toFixed(2), colRate + 2, rowStartY + 5, { width: colPer - colRate - 12, align: 'right' });
-                doc.font("Helvetica").text(item.per || '', colPer + 2, rowStartY + 5, { width: colAmount - colPer - 4, align: 'center' });
-                doc.font("Helvetica-Bold").text(Number(item.total || 0).toFixed(2), colAmount + 2, rowStartY + 5, { width: MARGIN + CONTENT_WIDTH - colAmount - 12, align: 'right' });
+                doc.font("Roboto").text(item.per || '', colPer + 2, rowStartY + 5, { width: colAmount - colPer - 4, align: 'center' });
+                doc.font("Roboto-Bold").text(Number(item.total || 0).toFixed(2), colAmount + 2, rowStartY + 5, { width: MARGIN + CONTENT_WIDTH - colAmount - 12, align: 'right' });
 
                 // Draw cell dividers (horizontal)
                 doc.moveTo(MARGIN, rowStartY + rowHeight).lineTo(MARGIN + CONTENT_WIDTH, rowStartY + rowHeight).stroke();
@@ -498,7 +501,7 @@ if (data.sender.pincode)
             if (discountAmount > 0) adjs.push({ label: "DISCOUNT", val: discountAmount, neg: true });
 
             // Calculate total adjustments height
-            const lineH = 15;
+            const lineH = 20;
             const totalAdjHeight = adjs.length * lineH;
 
             // PAGE BREAK CHECK for adjustments
@@ -522,7 +525,7 @@ if (data.sender.pincode)
                 gstTextY = currentItemY + 10;
             }
 
-            doc.fontSize(9).font("Helvetica-Bold");
+            doc.fontSize(9).font("Roboto-Bold");
 
             adjs.forEach(adj => {
                 doc.text(adj.label, colDesc + 20, gstTextY);
@@ -546,7 +549,7 @@ if (data.sender.pincode)
             // ─────────────────────────────────────────────
             // TOTAL ROW
             // ─────────────────────────────────────────────
-            const totalRowHeight = 20;
+            const totalRowHeight = 30;
             if (currentItemY + totalRowHeight > PAGE_BOTTOM_LIMIT) {
                 doc.addPage();
                 currentItemY = MARGIN;
@@ -558,24 +561,28 @@ if (data.sender.pincode)
             );
             drawVerticalLines(currentItemY, currentItemY + totalRowHeight);
 
-            doc.fontSize(9).font("Helvetica-Bold").text("Total", colDesc + 4, currentItemY + 5);
+            doc.fontSize(9).font("Roboto-Bold").text("Total", colDesc + 4, currentItemY + 10);
             const totalQty = data.items.reduce((sum, item) => sum + Number(item.quantity || 0), 0);
-            doc.text(`${totalQty} Nos`, colQty + 2, currentItemY + 5, { width: colRate - colQty - 4, align: 'center' });
-            doc.text(formatCurrency(data.total), colAmount + 2, currentItemY + 5, { width: MARGIN + CONTENT_WIDTH - colAmount - 15, align: 'right' });
+            doc.text(`${totalQty} Nos`, colQty + 2, currentItemY + 10, { width: colRate - colQty - 4, align: 'center' });
+            doc.text(formatCurrency(data.total), colAmount + 2, currentItemY + 10, { width: MARGIN + CONTENT_WIDTH - colAmount - 15, align: 'right' });
 
             y = currentItemY + totalRowHeight;
 
             // ─────────────────────────────────────────────
             // AMOUNT IN WORDS
             // ─────────────────────────────────────────────
-            const amountInWordsH = 30;
+            const amountInWordsText = numberToWords(data.total);
+            doc.fontSize(9).font("Roboto-Bold");
+            const wordsHeight = doc.heightOfString(amountInWordsText, { width: CONTENT_WIDTH - 10 });
+            const amountInWordsH = Math.max(35, 25 + wordsHeight);
+
             if (y + amountInWordsH > PAGE_BOTTOM_LIMIT) {
                 doc.addPage();
                 y = MARGIN;
             }
             doc.rect(MARGIN, y, CONTENT_WIDTH, amountInWordsH).stroke();
-            doc.fontSize(8).font("Helvetica-Bold").text("Amount Chargeable (in words)", MARGIN + 5, y + 3);
-            doc.fontSize(9).font("Helvetica-Bold").text(numberToWords(data.total), MARGIN + 5, y + 14, { width: CONTENT_WIDTH - 10 });
+            doc.fontSize(8).font("Roboto-Bold").text("Amount Chargeable (in words)", MARGIN + 5, y + 3);
+            doc.fontSize(9).font("Roboto-Bold").text(amountInWordsText, MARGIN + 5, y + 14, { width: CONTENT_WIDTH - 10 });
             y += amountInWordsH;
 
             // ─────────────────────────────────────────────
@@ -630,23 +637,23 @@ if (data.sender.pincode)
             doc.moveTo(gstX[2], gstTableTop + 13).lineTo(gstX[6], gstTableTop + 13).stroke();
 
 
-            doc.fontSize(7).font("Helvetica-Bold");
+            doc.fontSize(7).font("Roboto-Bold");
             doc.text("HSN/SAC", gstX[0] + 2, gstTableTop + 10, { width: gstCols[0] - 4, align: 'center' });
-            doc.text("Taxable\nValue", gstX[1] + 2, gstTableTop + 5, { width: gstCols[1] - 4, align: 'center' });
+            doc.text("Taxable\nValue (₹)", gstX[1] + 2, gstTableTop + 5, { width: gstCols[1] - 4, align: 'center' });
 
             if (isIGST) {
                 doc.text(`Integrated Tax @ ${igstRate || fullTaxRate}%`, gstX[2] + 2, gstTableTop + 3, { width: CONTENT_WIDTH - gstCols[0] - gstCols[1] - (CONTENT_WIDTH - gstX[6]) - 4, align: 'center' });
                 doc.text("Rate", gstX[2] + 2, gstTableTop + 16, { width: 120, align: 'center' });
-                doc.text("Amount", gstX[2] + 120, gstTableTop + 16, { width: 120, align: 'center' });
+                doc.text("Amount (₹)", gstX[2] + 120, gstTableTop + 16, { width: 120, align: 'center' });
             } else {
                 doc.text(`Central Tax @ ${cgstRate}%`, gstX[2] + 2, gstTableTop + 3, { width: gstCols[2] + gstCols[3] - 4, align: 'center' });
                 doc.text("Rate", gstX[2] + 2, gstTableTop + 16, { width: gstCols[2] - 4, align: 'center' });
-                doc.text("Amount", gstX[3] + 2, gstTableTop + 16, { width: gstCols[3] - 4, align: 'center' });
+                doc.text("Amount (₹)", gstX[3] + 2, gstTableTop + 16, { width: gstCols[3] - 4, align: 'center' });
                 doc.text(`State Tax @ ${sgstRate}%`, gstX[4] + 2, gstTableTop + 3, { width: gstCols[4] + gstCols[5] - 4, align: 'center' });
                 doc.text("Rate", gstX[4] + 2, gstTableTop + 16, { width: gstCols[4] - 4, align: 'center' });
-                doc.text("Amount", gstX[5] + 2, gstTableTop + 16, { width: gstCols[5] - 4, align: 'center' });
+                doc.text("Amount (₹)", gstX[5] + 2, gstTableTop + 16, { width: gstCols[5] - 4, align: 'center' });
             }
-            doc.text("Total Tax\nAmount", gstX[6] + 2, gstTableTop + 5, { width: gstCols[6] - 4, align: 'center' });
+            doc.text("Total Tax\nAmount (₹)", gstX[6] + 2, gstTableTop + 5, { width: gstCols[6] - 4, align: 'center' });
 
             let gstRowY = gstTableTop + gstHeaderH;
             let totalTaxable = 0, totalCGST = 0, totalSGST = 0, totalTaxSum = 0;
@@ -671,7 +678,7 @@ if (data.sender.pincode)
                 }
                 totalTaxable += group.taxable;
 
-                doc.fontSize(8).font("Helvetica");
+                doc.fontSize(8).font("Roboto");
                 doc.text(hsn, gstX[0] + 2, gstRowY + 4, { width: gstCols[0] - 4, align: 'center' });
                 doc.text(group.taxable.toFixed(2), gstX[1] + 2, gstRowY + 4, { width: gstCols[1] - 12, align: 'right' });
 
@@ -690,7 +697,7 @@ if (data.sender.pincode)
                 doc.moveTo(MARGIN, gstRowY).lineTo(MARGIN + CONTENT_WIDTH, gstRowY).stroke();
             });
 
-            doc.fontSize(8).font("Helvetica-Bold");
+            doc.fontSize(8).font("Roboto-Bold");
             doc.text("Total", gstX[0] + 2, gstRowY + 4, { width: gstCols[0] - 4, align: 'center' });
             doc.text(totalTaxable.toFixed(2), gstX[1] + 2, gstRowY + 4, { width: gstCols[1] - 12, align: 'right' });
             if (isIGST) {
@@ -708,8 +715,8 @@ if (data.sender.pincode)
             // ─────────────────────────────────────────────
             y += 5;
             if (y + 15 > doc.page.height - 40) { doc.addPage(); y = MARGIN; }
-            doc.fontSize(8).font("Helvetica-Bold").text("Tax Amount (in words) : ", MARGIN + 5, y, { continued: true });
-            doc.font("Helvetica").text(numberToWords(totalTaxSum));
+            doc.fontSize(8).font("Roboto-Bold").text("Tax Amount (in words) : ", MARGIN + 5, y, { continued: true });
+            doc.font("Roboto").text(numberToWords(totalTaxSum));
             y += 15;
             // ─────────────────────────────────────────────
             // FOOTER (Declaration + Signatory)
@@ -721,7 +728,7 @@ if (data.sender.pincode)
                 "We declare that this invoice shows the actual price of the goods described and that all particulars are true and correct.";
 
             // STEP 2: Measure height
-            doc.fontSize(8).font("Helvetica");
+            doc.fontSize(8).font("Roboto");
 
             const declarationHeight = doc.heightOfString(declarationText, {
                 width: CONTENT_WIDTH * 0.55
@@ -744,10 +751,10 @@ if (data.sender.pincode)
                 .stroke();
 
             // LEFT
-            doc.fontSize(9).font("Helvetica-Bold")
+            doc.fontSize(9).font("Roboto-Bold")
                 .text("Declaration:", MARGIN + 5, y + 5);
 
-            doc.fontSize(8).font("Helvetica")
+            doc.fontSize(8).font("Roboto")
                 .text(declarationText, MARGIN + 5, y + 15, {
                     width: CONTENT_WIDTH * 0.57
                 });
@@ -756,7 +763,7 @@ if (data.sender.pincode)
             const sigX = MARGIN + (CONTENT_WIDTH * 0.6) + 5;
             const sigWidth = CONTENT_WIDTH * 0.38;
 
-            doc.fontSize(8).font("Helvetica").text(
+            doc.fontSize(8).font("Roboto").text(
                 "For Cloudsat Private Limited",
                 sigX,
                 y + footerBoxHeight - 70, // 👈 bottom position
@@ -769,7 +776,7 @@ if (data.sender.pincode)
 
 
             // 🔥 FINAL FIX (IMPORTANT)
-            doc.font("Helvetica-Bold").text(
+            doc.font("Roboto-Bold").text(
                 "Authorised Signatory",
                 sigX,
                 y + footerBoxHeight - 20, // keep inside

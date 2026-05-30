@@ -30,6 +30,7 @@ export const createPurchaseVoucher = async (req, res) => {
       cgst_rate,
       sgst_rate,
       grand_total,
+      round_off,
       narration,
       invoiceNo,
       items,
@@ -60,7 +61,7 @@ export const createPurchaseVoucher = async (req, res) => {
     const insertVoucherQuery = `
       INSERT INTO purchase_vouchers (
         companyId, ledgerId, date, customer, subtotal, gst_percentage,
-        gst_amount, grand_total, narration, invoiceNo, igst, cgst, sgst,
+        gst_amount, grand_total, round_off, narration, invoiceNo, igst, cgst, sgst,
         consignorName, consignorGSTIN, consignorState,
         consignorPincode, consignorAddress, consignorEmail,
         consigneeName, consigneeGSTIN, consigneeState,
@@ -75,7 +76,7 @@ export const createPurchaseVoucher = async (req, res) => {
         gstRegistrationType, gstin, placeOfSupply,
         igst_rate, cgst_rate, sgst_rate, carrierName
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
     const [voucherResult] = await conn.query(insertVoucherQuery, [
@@ -87,6 +88,7 @@ export const createPurchaseVoucher = async (req, res) => {
       gst_percentage,
       gst_amount,
       grand_total,
+      round_off || 0,
       narration,
       invoiceNo,
       igst || 0,
@@ -167,9 +169,9 @@ export const createPurchaseVoucher = async (req, res) => {
     for (let item of items) {
       await conn.query(
         `INSERT INTO purchase_voucher_items 
-        (voucher_id, item_name, qty, rate, amount, hsn_code)
-        VALUES (?, ?, ?, ?, ?, ?)`,
-        [voucherId, item.item, item.qty, item.rate, item.amount, item.hsn_code || '']
+        (voucher_id, item_name, qty, rate, per, amount, hsn_code)
+        VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [voucherId, item.item, item.qty, item.rate, item.per || 'Nos', item.amount, item.hsn_code || '']
       );
 
       const [stockCheck] = await conn.query(
@@ -181,7 +183,7 @@ export const createPurchaseVoucher = async (req, res) => {
 
       if (stockCheck.length > 0) {
         const stockId = stockCheck[0].id;
-        const newQty = stockCheck[0].openingBalanceQty + item.qty;
+        const newQty = parseFloat(stockCheck[0].openingBalanceQty || 0) + parseFloat(item.qty || 0);
         await conn.query(
           `UPDATE stocks SET openingBalanceQty = ? WHERE id = ?`,
           [newQty, stockId]
@@ -227,6 +229,7 @@ export const createPurchaseVoucher = async (req, res) => {
       cgst_rate: Number(cgst_rate) || 0,
       sgst_rate: Number(sgst_rate) || 0,
       grand_total: Number(grand_total) || 0,
+      round_off: Number(round_off) || 0,
       narration: narration,
       invoiceNo: invoiceNo,
       sender: {
@@ -335,6 +338,7 @@ export const updatePurchaseVoucher = async (req, res) => {
       cgst_rate,
       sgst_rate,
       grand_total,
+      round_off,
       narration,
       invoiceNo,
       items,
@@ -378,7 +382,7 @@ export const updatePurchaseVoucher = async (req, res) => {
     const updateVoucherQuery = `
       UPDATE purchase_vouchers SET
         ledgerId = ?, date = ?, customer = ?, subtotal = ?, gst_percentage = ?,
-        gst_amount = ?, grand_total = ?, narration = ?, invoiceNo = ?, igst = ?, cgst = ?, sgst = ?,
+        gst_amount = ?, grand_total = ?, round_off = ?, narration = ?, invoiceNo = ?, igst = ?, cgst = ?, sgst = ?,
         consignorName = ?, consignorGSTIN = ?, consignorState = ?,
         consignorPincode = ?, consignorAddress = ?, consignorEmail = ?,
         consigneeName = ?, consigneeGSTIN = ?, consigneeState = ?,
@@ -403,6 +407,7 @@ export const updatePurchaseVoucher = async (req, res) => {
       gst_percentage,
       gst_amount,
       grand_total,
+      round_off || 0,
       narration,
       invoiceNo,
       igst || 0,
@@ -456,6 +461,14 @@ export const updatePurchaseVoucher = async (req, res) => {
       id
     ]);
 
+    // Preserve creator info
+    const [existingTxns] = await conn.query(
+      `SELECT created_by_user_id, created_by_employee_id FROM voucher_transactions WHERE voucherType = 'Purchase' AND voucherId = ? LIMIT 1`,
+      [id]
+    );
+    const created_by_user_id = existingTxns.length > 0 ? existingTxns[0].created_by_user_id : null;
+    const created_by_employee_id = existingTxns.length > 0 ? existingTxns[0].created_by_employee_id : null;
+
     // Update voucher transaction
     await conn.query(
       `DELETE FROM voucher_transactions WHERE voucherType = 'Purchase' AND voucherId = ?`,
@@ -475,9 +488,9 @@ export const updatePurchaseVoucher = async (req, res) => {
 
     await conn.query(
       `INSERT INTO voucher_transactions 
-       (companyId, ledgerId, voucherType, voucherId, debit, credit, date, accountType)
-       VALUES (?, ?, 'Purchase', ?, 0, ?, ?, ?)`,
-      [companyId, ledger, id, grand_total, date, transactionAccountType]
+       (companyId, ledgerId, voucherType, voucherId, debit, credit, date, accountType, created_by_user_id, created_by_employee_id)
+       VALUES (?, ?, 'Purchase', ?, 0, ?, ?, ?, ?, ?)`,
+      [companyId, ledger, id, grand_total, date, transactionAccountType, created_by_user_id, created_by_employee_id]
     );
 
     // Delete existing purchase items and add new items + Update stock
@@ -485,9 +498,9 @@ export const updatePurchaseVoucher = async (req, res) => {
     for (let item of items) {
       await conn.query(
         `INSERT INTO purchase_voucher_items 
-        (voucher_id, item_name, qty, rate, amount, hsn_code)
-        VALUES (?, ?, ?, ?, ?, ?)`,
-        [id, item.item, item.qty, item.rate, item.amount, item.hsn_code || '']
+        (voucher_id, item_name, qty, rate, per, amount, hsn_code)
+        VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [id, item.item, item.qty, item.rate, item.per || 'Nos', item.amount, item.hsn_code || '']
       );
 
       const [stockCheck] = await conn.query(
@@ -499,7 +512,7 @@ export const updatePurchaseVoucher = async (req, res) => {
 
       if (stockCheck.length > 0) {
         const stockId = stockCheck[0].id;
-        const newQty = stockCheck[0].openingBalanceQty + item.qty;
+        const newQty = parseFloat(stockCheck[0].openingBalanceQty || 0) + parseFloat(item.qty || 0);
         await conn.query(
           `UPDATE stocks SET openingBalanceQty = ? WHERE id = ?`,
           [newQty, stockId]
@@ -545,6 +558,7 @@ export const updatePurchaseVoucher = async (req, res) => {
       cgst_rate: Number(cgst_rate) || 0,
       sgst_rate: Number(sgst_rate) || 0,
       grand_total: Number(grand_total) || 0,
+      round_off: Number(round_off) || 0,
       narration: narration,
       invoiceNo: invoiceNo,
       sender: {
@@ -702,7 +716,7 @@ export const getPurchaseVoucherById = async (req, res) => {
     }
 
     const [items] = await pool.query(
-      `SELECT id, item_name as item, qty, rate, amount, hsn_code FROM purchase_voucher_items WHERE voucher_id = ?`,
+      `SELECT id, item_name as item, qty, rate, amount, hsn_code, per FROM purchase_voucher_items WHERE voucher_id = ?`,
       [id]
     );
 
@@ -727,7 +741,7 @@ export const downloadPurchaseVoucherPDF = async (req, res) => {
     }
 
     const [items] = await pool.query(
-      `SELECT id, item_name as item, qty, rate, amount, hsn_code FROM purchase_voucher_items WHERE voucher_id = ?`,
+      `SELECT id, item_name as item, qty, rate, amount, hsn_code, per FROM purchase_voucher_items WHERE voucher_id = ?`,
       [id]
     );
 
@@ -762,6 +776,7 @@ export const downloadPurchaseVoucherPDF = async (req, res) => {
       cgst_rate: Number(voucher.cgst_rate) || 0,
       sgst_rate: Number(voucher.sgst_rate) || 0,
       grand_total: Number(voucher.grand_total) || 0,
+      round_off: Number(voucher.round_off) || 0,
       narration: voucher.narration,
       invoiceNo: voucher.invoiceNo,
       sender: {
@@ -874,10 +889,13 @@ export const getPurchaseVouchersAll = async (req, res) => {
   const { companyId } = req.params;
   try {
     const [rows] = await pool.query(
-      `SELECT purchase_vouchers.*, DATE_FORMAT(date, '%Y-%m-%d') AS date
+      `SELECT purchase_vouchers.*, 
+              DATE_FORMAT(purchase_vouchers.date, '%Y-%m-%d') AS date,
+              users.name AS creator_name
        FROM purchase_vouchers
-       WHERE companyId = ?
-       ORDER BY created_at DESC`,
+       LEFT JOIN users ON purchase_vouchers.created_by_user_id = users.id
+       WHERE purchase_vouchers.companyId = ?
+       ORDER BY purchase_vouchers.created_at DESC`,
       [companyId]
     );
 
@@ -1002,8 +1020,8 @@ export const uploadFromExcel = async (req, res) => {
       const [voucherRes] = await conn.query(
         `
         INSERT INTO purchase_vouchers
-        (companyId, ledgerId, date, customer, subtotal, gst_percentage, gst_amount, grand_total, narration, created_by_user_id, created_by_employee_id)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        (companyId, ledgerId, date, customer, subtotal, gst_percentage, gst_amount, grand_total, round_off, narration, created_by_user_id, created_by_employee_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)
         `,
         [
           companyId,
@@ -1127,6 +1145,7 @@ export const bulkCreatePurchaseVoucher = async (req, res) => {
         gst_percentage,
         gst_amount,
         grand_total,
+        round_off,
         narration,
         items,
         igst,
@@ -1137,8 +1156,8 @@ export const bulkCreatePurchaseVoucher = async (req, res) => {
       // 1️⃣ Insert voucher
       const [result] = await conn.query(
         `INSERT INTO purchase_vouchers 
-        (companyId, ledgerId, date, customer, subtotal, gst_percentage, gst_amount, grand_total, narration, igst, cgst, sgst, created_by_user_id, created_by_employee_id)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        (companyId, ledgerId, date, customer, subtotal, gst_percentage, gst_amount, grand_total, round_off, narration, igst, cgst, sgst, created_by_user_id, created_by_employee_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           companyId,
           ledger,
