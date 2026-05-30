@@ -208,7 +208,21 @@ export const getLedgers = async (req, res) => {
               u.name AS created_by_name,
               u.email AS created_by_email,
               u.role AS created_by_role,
-              u.employee_id AS creator_employee_id
+              u.employee_id AS creator_employee_id,
+              (
+                SELECT COALESCE(SUM(debit), 0) FROM voucher_transactions WHERE ledgerId = l.id AND companyId = l.companyId
+              ) + (
+                SELECT COALESCE(SUM(amount), 0) FROM voucher_transactions WHERE voucherType = 'Contra' AND toLedger = l.id AND companyId = l.companyId
+              ) + (
+                SELECT COALESCE(SUM(amount), 0) FROM voucher_transactions WHERE voucherType = 'journal' AND fromLedger = l.id AND companyId = l.companyId
+              ) AS computed_total_debit,
+              (
+                SELECT COALESCE(SUM(credit), 0) FROM voucher_transactions WHERE ledgerId = l.id AND companyId = l.companyId
+              ) + (
+                SELECT COALESCE(SUM(amount), 0) FROM voucher_transactions WHERE voucherType = 'Contra' AND fromLedger = l.id AND companyId = l.companyId
+              ) + (
+                SELECT COALESCE(SUM(amount), 0) FROM voucher_transactions WHERE voucherType = 'journal' AND toLedger = l.id AND companyId = l.companyId
+              ) AS computed_total_credit
        FROM ledgers l
        LEFT JOIN bank_details b 
        ON l.id = b.ledgerId AND b.companyId = ?
@@ -219,7 +233,21 @@ export const getLedgers = async (req, res) => {
       [companyId, companyId]
     );
 
-    res.json(rows);
+    // Compute dynamic closing balances
+    const enhancedRows = rows.map(r => {
+      const open = parseFloat(r.openingBalance) || 0;
+      const dr = parseFloat(r.computed_total_debit) || 0;
+      const cr = parseFloat(r.computed_total_credit) || 0;
+      let closing = 0;
+      if (r.balanceType === "Debit") {
+        closing = open + dr - cr;
+      } else {
+        closing = open + cr - dr;
+      }
+      return { ...r, debit: dr, credit: cr, closingBalance: closing };
+    });
+
+    res.json(enhancedRows);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -235,7 +263,21 @@ export const getLedgerById = async (req, res) => {
               u.name AS created_by_name,
               u.email AS created_by_email,
               u.role AS created_by_role,
-              u.employee_id AS creator_employee_id
+              u.employee_id AS creator_employee_id,
+              (
+                SELECT COALESCE(SUM(debit), 0) FROM voucher_transactions WHERE ledgerId = l.id AND companyId = l.companyId
+              ) + (
+                SELECT COALESCE(SUM(amount), 0) FROM voucher_transactions WHERE voucherType = 'Contra' AND toLedger = l.id AND companyId = l.companyId
+              ) + (
+                SELECT COALESCE(SUM(amount), 0) FROM voucher_transactions WHERE voucherType = 'journal' AND fromLedger = l.id AND companyId = l.companyId
+              ) AS computed_total_debit,
+              (
+                SELECT COALESCE(SUM(credit), 0) FROM voucher_transactions WHERE ledgerId = l.id AND companyId = l.companyId
+              ) + (
+                SELECT COALESCE(SUM(amount), 0) FROM voucher_transactions WHERE voucherType = 'Contra' AND fromLedger = l.id AND companyId = l.companyId
+              ) + (
+                SELECT COALESCE(SUM(amount), 0) FROM voucher_transactions WHERE voucherType = 'journal' AND toLedger = l.id AND companyId = l.companyId
+              ) AS computed_total_credit
        FROM ledgers l
        LEFT JOIN users u
        ON l.created_by_user_id = u.id
@@ -248,7 +290,21 @@ export const getLedgerById = async (req, res) => {
       [id, companyId]
     );
 
-    res.json({ ...ledger[0], bankDetails: bank[0] || null });
+    let enhancedLedger = ledger[0];
+    if (enhancedLedger) {
+      const open = parseFloat(enhancedLedger.openingBalance) || 0;
+      const dr = parseFloat(enhancedLedger.computed_total_debit) || 0;
+      const cr = parseFloat(enhancedLedger.computed_total_credit) || 0;
+      let closing = 0;
+      if (enhancedLedger.balanceType === "Debit") {
+        closing = open + dr - cr;
+      } else {
+        closing = open + cr - dr;
+      }
+      enhancedLedger = { ...enhancedLedger, debit: dr, credit: cr, closingBalance: closing };
+    }
+
+    res.json({ ...enhancedLedger, bankDetails: bank[0] || null });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

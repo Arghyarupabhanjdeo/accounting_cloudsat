@@ -37,6 +37,8 @@ const normalizeLedgerId = (id) => {
   // NORMAL LEDGER
   return parseInt(id, 10);
 };
+
+
 const getAccountName = async (ledgerId, companyId) => {
   if (!ledgerId) return "N/A";
   if (ledgerId === "cash") return "Cash";
@@ -112,6 +114,71 @@ const updateAccountBalance = async (connOrPool, accountId, companyId, amount, is
 };
 
 // CREATE Contra Voucher
+
+
+// export const createContraVoucher = async (req, res) => {
+//   const { companyId } = req.params;
+//   console.log("contra Receving Body",req.body);
+
+//   const {
+//     date,
+//     narration,
+//     gstType,
+//     gstRate,
+//     transactions,
+//     ledgerId 
+//   } = req.body;
+
+//   try {
+//     const totalAmount = transactions.reduce(
+//       (sum, t) => sum + (parseFloat(t.amount) || 0),
+//       0
+//     );
+
+//     const ledgerId =2
+//     const gstAmount = (totalAmount * (gstRate || 0)) / 100;
+//     const grandTotal = totalAmount + gstAmount;
+
+//     // Insert Voucher (header)
+//     const [voucherResult] = await pool.query(
+//       `INSERT INTO contra_vouchers 
+//        (companyId, date, narration, gstType, gstRate, gstAmount, totalAmount, grandTotal)
+//        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+//       [
+//         companyId,
+//         date,
+//         narration,
+//         gstType,
+//         gstRate,
+//         gstAmount,
+//         totalAmount,
+//         grandTotal,
+//       ]
+//     );
+
+//     const voucherId = voucherResult.insertId;
+
+//     // Insert Transactions
+//     for (let t of transactions) {
+//       await pool.query(
+//         `INSERT INTO contra_transactions 
+//          (voucherId, fromAccount, toAccount, amount, narration)
+//          VALUES (?, ?, ?, ?, ?)`,
+//         [voucherId, t.fromAccount, t.toAccount, t.amount, t.narration]
+//       );
+//     }
+
+//     res.status(201).json({
+//       success: true,
+//       message: "Contra Voucher Created Successfully",
+//       voucherId,
+//     });
+
+//   } catch (error) {
+//     console.error("CREATE CONTRA ERROR:", error);
+//     res.status(500).json({ success: false, message: error.message });
+//   }
+// };
 export const createContraVoucher = async (req, res) => {
   const { companyId } = req.params;
   console.log("contra Receving Body", req.body);
@@ -125,7 +192,21 @@ export const createContraVoucher = async (req, res) => {
     gstRate,
     transactions,
   } = req.body;
+// Check duplicate voucher number
+const [[existingVoucher]] = await pool.query(
+  `SELECT id
+   FROM contra_vouchers
+   WHERE companyId = ?
+   AND voucherNo = ?`,
+  [companyId, voucherNo]
+);
 
+if (existingVoucher) {
+  return res.status(400).json({
+    success: false,
+    message: `Voucher No ${voucherNo} already exists`
+  });
+}
   try {
     const totalAmount = transactions.reduce(
       (sum, t) => sum + (parseFloat(t.amount) || 0),
@@ -159,7 +240,17 @@ export const createContraVoucher = async (req, res) => {
       `UPDATE contra_vouchers SET created_by_user_id = ?, created_by_employee_id = ? WHERE id = ?`,
       [creator.userId, creator.employeeId, voucherId]
     );
+    // const normalizeLedgerId = (id) => {
+    //   if (!id) return null;
 
+    //   if (id === "cash") return 0;
+
+    //   if (typeof id === "string" && id.startsWith("bank_")) {
+    //     return parseInt(id.split("_")[1], 10);
+    //   }
+
+    //   return parseInt(id, 10) || id;
+    // };
     // Process each transaction
     for (let t of transactions) {
 
@@ -194,15 +285,15 @@ export const createContraVoucher = async (req, res) => {
         });
       }
 
-      const [[company]] = await pool.query(`SELECT * FROM companies WHERE id = ?`, [companyId]);
-      let companyName = company ? company.name : "Cloudsat Private Limited";
+      const [companyRows] = await pool.query(`SELECT name FROM companies WHERE id = ?`, [companyId]);
+      let companyName = companyRows.length > 0 ? companyRows[0].name : "Cloudsat Private Limited";
       if (!companyName || companyName === "Company Name" || companyName === "Ashwashana Private Limited") {
         companyName = "Cloudsat Private Limited";
       }
 
       pdfPath = `uploads/contra/Contra_${voucherNo || voucherId}_${Date.now()}.pdf`;
 
-      await generateContraVoucherPDF({ company, companyName, voucherNo: voucherNo || voucherId, date, transactions: pdfTransactions, total: totalAmount, narration }, pdfPath);
+      await generateContraVoucherPDF({ companyName, voucherNo: voucherNo || voucherId, date, transactions: pdfTransactions, total: totalAmount, narration }, pdfPath);
       await pool.query(`UPDATE contra_vouchers SET pdf_path = ? WHERE id = ?`, [pdfPath, voucherId]);
     } catch (pdfErr) {
       console.error("Error generating PDF on create:", pdfErr);
@@ -222,6 +313,23 @@ export const createContraVoucher = async (req, res) => {
 };
 
 // GET All Contra Vouchers (for a company)
+// export const getContraVouchers = async (req, res) => {
+//   const { companyId } = req.params;
+//   try {
+//     const [rows] = await pool.query(
+//       `SELECT * FROM contra_vouchers WHERE companyId = ? ORDER BY id DESC`,
+//       [companyId]
+//     );
+
+//     res.status(200).json({
+//       message: "Contra Vouchers Fetched",
+//       data: rows,
+//     });
+//   } catch (error) {
+//     console.error("FETCH ERROR:", error);
+//     res.status(500).json({ message: "Internal Server Error" });
+//   }
+// };
 export const getContraVouchers = async (req, res) => {
   const { companyId } = req.params;
 
@@ -306,13 +414,13 @@ export const getContraVoucherById = async (req, res) => {
 
         fromAccount:
           t.fromAccount === 0 ||
-          t.fromAccount === "0"
+            t.fromAccount === "0"
             ? "cash"
             : `bank_${t.fromAccount}`,
 
         toAccount:
           t.toAccount === 0 ||
-          t.toAccount === "0"
+            t.toAccount === "0"
             ? "cash"
             : `bank_${t.toAccount}`,
       }));
@@ -390,6 +498,8 @@ export const deleteContraVoucher = async (req, res) => {
   }
 };
 
+
+
 // UPDATE Contra Voucher
 export const updateContraVoucher = async (req, res) => {
   const { id } = req.params;
@@ -429,6 +539,25 @@ export const updateContraVoucher = async (req, res) => {
     );
 
     const activeCompanyId = companyId || oldVoucher.companyId;
+
+    // Check duplicate voucher number
+const [[duplicateVoucher]] = await conn.query(
+  `SELECT id
+   FROM contra_vouchers
+   WHERE companyId = ?
+   AND voucherNo = ?
+   AND id <> ?`,
+  [activeCompanyId, voucherNo, id]
+);
+
+if (duplicateVoucher) {
+  await conn.rollback();
+
+  return res.status(400).json({
+    success: false,
+    message: `Voucher No ${voucherNo} already exists`,
+  });
+}
 
     // Revert old ledger balances
     for (const oldT of oldTransactions) {
@@ -480,9 +609,17 @@ export const updateContraVoucher = async (req, res) => {
          VALUES (?, ?, ?, ?, ?)`,
         [
           id,
-          normalizeLedgerId(t.fromAccount),
-          normalizeLedgerId(t.toAccount),
+
+          normalizeLedgerId(
+            t.fromAccount
+          ),
+
+          normalizeLedgerId(
+            t.toAccount
+          ),
+
           t.amount,
+
           t.narration
         ]
       );
@@ -507,15 +644,15 @@ export const updateContraVoucher = async (req, res) => {
         });
       }
 
-      const [[company]] = await pool.query(`SELECT * FROM companies WHERE id = ?`, [activeCompanyId]);
-      let companyName = company ? company.name : "Cloudsat Private Limited";
+      const [companyRows] = await pool.query(`SELECT name FROM companies WHERE id = ?`, [activeCompanyId]);
+      let companyName = companyRows.length > 0 ? companyRows[0].name : "Cloudsat Private Limited";
       if (!companyName || companyName === "Company Name" || companyName === "Ashwashana Private Limited") {
         companyName = "Cloudsat Private Limited";
       }
 
       pdfPath = `uploads/contra/Contra_${voucherNo || id}_${Date.now()}.pdf`;
 
-      await generateContraVoucherPDF({ company, companyName, voucherNo: voucherNo || id, date, transactions: pdfTransactions, total: totalAmount, narration }, pdfPath);
+      await generateContraVoucherPDF({ companyName, voucherNo: voucherNo || id, date, transactions: pdfTransactions, total: totalAmount, narration }, pdfPath);
       await pool.query(`UPDATE contra_vouchers SET pdf_path = ? WHERE id = ?`, [pdfPath, id]);
     } catch (pdfErr) {
       console.error("Error generating PDF on update:", pdfErr);
@@ -636,20 +773,47 @@ export const downloadContraVoucherPDF = async (req, res) => {
       });
     }
 
-    const [[company]] = await pool.query(`SELECT * FROM companies WHERE id = ?`, [voucher.companyId]);
-    let companyName = company ? company.name : "Cloudsat Private Limited";
+    const [companyRows] = await pool.query(`SELECT name FROM companies WHERE id = ?`, [voucher.companyId]);
+    let companyName = companyRows.length > 0 ? companyRows[0].name : "Cloudsat Private Limited";
     if (!companyName || companyName === "Company Name" || companyName === "Ashwashana Private Limited") {
       companyName = "Cloudsat Private Limited";
     }
 
     const pdfPath = `uploads/contra/Contra_${voucher.voucherNo || id}_${Date.now()}.pdf`;
 
-    await generateContraVoucherPDF({ company, companyName, voucherNo: voucher.voucherNo || id, date: voucher.date, transactions: pdfTransactions, total: voucher.totalAmount, narration: voucher.narration }, pdfPath);
+    await generateContraVoucherPDF({ companyName, voucherNo: voucher.voucherNo || id, date: voucher.date, transactions: pdfTransactions, total: voucher.totalAmount, narration: voucher.narration }, pdfPath);
     await pool.query(`UPDATE contra_vouchers SET pdf_path = ? WHERE id = ?`, [pdfPath, id]);
 
     res.download(path.join(process.cwd(), pdfPath));
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: "Error generating PDF" });
+  }
+};
+
+
+
+export const getNextContraVoucherNo = async (req, res) => {
+  const { companyId } = req.params;
+
+  try {
+    const [[row]] = await pool.query(
+      `SELECT MAX(CAST(voucherNo AS UNSIGNED)) AS lastVoucher
+       FROM contra_vouchers
+       WHERE companyId = ?`,
+      [companyId]
+    );
+
+    const nextVoucherNo = (row?.lastVoucher || 0) + 1;
+
+    res.json({
+      success: true,
+      voucherNo: String(nextVoucherNo),
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
   }
 };
