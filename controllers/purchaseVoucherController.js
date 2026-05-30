@@ -853,7 +853,10 @@ export const getAllVouchers = async (req, res) => {
 
   try {
     const [rows] = await pool.query(
-      `SELECT * FROM purchase_vouchers WHERE companyId = ? ORDER BY created_at DESC`,
+      `SELECT purchase_vouchers.*, DATE_FORMAT(date, '%Y-%m-%d') AS date
+       FROM purchase_vouchers
+       WHERE companyId = ?
+       ORDER BY created_at DESC`,
       [companyId]
     );
     console.log(rows);
@@ -871,7 +874,10 @@ export const getPurchaseVouchersAll = async (req, res) => {
   const { companyId } = req.params;
   try {
     const [rows] = await pool.query(
-      `SELECT * FROM purchase_vouchers WHERE companyId = ? ORDER BY created_at DESC`,
+      `SELECT purchase_vouchers.*, DATE_FORMAT(date, '%Y-%m-%d') AS date
+       FROM purchase_vouchers
+       WHERE companyId = ?
+       ORDER BY created_at DESC`,
       [companyId]
     );
 

@@ -700,7 +700,9 @@ export const getSaleVoucher = async (req, res) => {
 
   try {
     const [rows] = await pool.query(
-      `SELECT * FROM sales_vouchers WHERE companyId = ?`,
+      `SELECT sales_vouchers.*, DATE_FORMAT(date, '%Y-%m-%d') AS date
+       FROM sales_vouchers
+       WHERE companyId = ?`,
       [companyId]
     );
     console.log("data is =>", rows);
