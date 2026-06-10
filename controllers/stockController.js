@@ -96,7 +96,7 @@ export const getStocks = async (req, res) => {
 
   try {
     const [rows] = await pool.query(
-      `SELECT * FROM stocks WHERE companyId = ? and isdeleted = 0`,
+      `SELECT * FROM stocks WHERE companyId = ? and isdeleted = 0 ORDER BY id DESC`,
       [companyId]
     );
 

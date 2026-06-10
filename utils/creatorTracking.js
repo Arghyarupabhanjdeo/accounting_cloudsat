@@ -24,6 +24,31 @@ export const getCreatorFromRequest = (req) => {
       employeeId: pickFirst(decoded.employee_id, decoded.employeeId, decoded.employeeID),
     };
   } catch {
+    // Fallback: Verify using the Main System's JWT Secret (if provided)
+    if (process.env.MAIN_JWT_SECRET) {
+      try {
+        const decoded = jwt.verify(token, process.env.MAIN_JWT_SECRET);
+        return {
+          userId: pickFirst(decoded.id, decoded.user_id, decoded.userId),
+          employeeId: pickFirst(decoded.employee_id, decoded.employeeId, decoded.employeeID),
+        };
+      } catch {
+        // Ignore secondary verify error
+      }
+    }
+    
+    // Insecure fallback: Decode without verifying if neither secret works
+    try {
+      const decoded = jwt.decode(token);
+      if (decoded) {
+        return {
+          userId: pickFirst(decoded.id, decoded.user_id, decoded.userId),
+          employeeId: pickFirst(decoded.employee_id, decoded.employeeId, decoded.employeeID),
+        };
+      }
+    } catch {
+      // Ignore inner decode error
+    }
     return { userId: null, employeeId: null };
   }
 };

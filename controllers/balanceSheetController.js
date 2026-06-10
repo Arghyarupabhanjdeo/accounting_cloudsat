@@ -1,3 +1,4 @@
+import { getCreatorFromRequest } from "../utils/creatorTracking.js";
 import pool from "../db.js";
 
 
@@ -133,7 +134,19 @@ import pool from "../db.js";
 export const getBalanceSheet = async (req, res) => {
   const { companyId } = req.params;
 
-  try {
+  
+  const creator = getCreatorFromRequest(req);
+  let extraCondition = "";
+  let extraParams = [];
+
+  if (creator.employeeId) {
+    extraCondition = " AND created_by_employee_id = ?";
+    extraParams.push(creator.employeeId);
+  } else if (creator.userId) {
+    extraCondition = " AND created_by_user_id = ?";
+    extraParams.push(creator.userId);
+  }
+try {
     // ----------------------------------------------------------
     // 1️⃣ Fetch Ledgers & Groups
     // ----------------------------------------------------------
@@ -143,15 +156,34 @@ export const getBalanceSheet = async (req, res) => {
     );
 
     const [groups] = await pool.query(
-      `SELECT * FROM groups WHERE companyId = ?`,
+      `SELECT * FROM groups WHERE companyId = ? OR companyId IS NULL`,
       [companyId]
     );
+
+    const groupMapByName = {};
+    groups.forEach((g) => {
+      groupMapByName[g.groupName] = g;
+    });
+
+    const getPrimaryGroup = (groupName) => {
+      let current = groupMapByName[groupName];
+      let lastGroupName = groupName;
+      let visited = new Set();
+      while (current && current.under && current.under !== "Primary" && current.under !== "") {
+        if (visited.has(current.groupName)) break;
+        visited.add(current.groupName);
+        lastGroupName = current.under;
+        current = groupMapByName[current.under];
+      }
+      return lastGroupName || "Others";
+    };
 
     // Map groups by ID
     const groupMap = {};
     groups.forEach((g) => {
       groupMap[g.id] = {
         groupName: g.groupName,
+        primaryGroupName: getPrimaryGroup(g.groupName),
         nature: g.nature?.toLowerCase(), // assets, liabilities, income, expense, equity
       };
     });
@@ -166,7 +198,7 @@ export const getBalanceSheet = async (req, res) => {
           ledgerId: id,
           ledgerName: name,
           groupId: groupId || 0,
-          groupName: groupMap[groupId]?.groupName || "Others",
+          groupName: groupMap[groupId]?.primaryGroupName || groupMap[groupId]?.groupName || "Others",
           nature: nature || groupMap[groupId]?.nature || "liabilities", // Default to liab if unknown
           openingDebit: 0,
           openingCredit: 0,
@@ -186,7 +218,7 @@ export const getBalanceSheet = async (req, res) => {
         ledgerId: l.id,
         ledgerName: l.name,
         groupId: l.groupId,
-        groupName: groupMap[l.groupId]?.groupName || "Others",
+        groupName: groupMap[l.groupId]?.primaryGroupName || groupMap[l.groupId]?.groupName || "Others",
         nature: groupMap[l.groupId]?.nature || "asset",
 
         openingDebit: l.balanceType === "Debit" ? +l.openingBalance : 0,
@@ -200,9 +232,10 @@ export const getBalanceSheet = async (req, res) => {
       };
     });
 
-    // Virtual Ledger IDs (arbitrary negative IDs to avoid conflict)
+    // Virtual Ledger IDs
     const DUTIES_TAXES_ID = -999;
     initLedger(DUTIES_TAXES_ID, "Duties & Taxes", null, "liabilities");
+    ledgerSummary[DUTIES_TAXES_ID].groupName = "Current Liabilities";
 
 
 
@@ -216,8 +249,7 @@ export const getBalanceSheet = async (req, res) => {
     // The query `SELECT ledgerId, amount FROM payment_vouchers` usually ignores the Cash/Bank side if not stored. 
     // We will stick to correcting the PARTY balance.
     const [payment] = await pool.query(
-      `SELECT ledgerId, amount FROM payment_vouchers WHERE companyId = ?`, [companyId]
-    );
+      `SELECT ledgerId, amount FROM payment_vouchers WHERE companyId = ?${extraCondition}`, [companyId, ...extraParams]);
     payment.forEach((p) => {
       if (ledgerSummary[p.ledgerId]) {
         // Party picked up money: Dr Party
@@ -228,8 +260,7 @@ export const getBalanceSheet = async (req, res) => {
     // b) Receive (Credit Party, Debit Bank/Cash)
     // Party gave money: Cr Party.
     const [receive] = await pool.query(
-      `SELECT customer AS ledgerId, amount FROM receive_vouchers WHERE companyId = ?`, [companyId]
-    );
+      `SELECT customer AS ledgerId, amount FROM receive_vouchers WHERE companyId = ?${extraCondition}`, [companyId, ...extraParams]);
     receive.forEach((r) => {
       if (ledgerSummary[r.ledgerId]) {
         ledgerSummary[r.ledgerId].credit += Number(r.amount);
@@ -239,8 +270,7 @@ export const getBalanceSheet = async (req, res) => {
     // c) Purchase (Credit Supplier, Debit Purchase A/c, Debit Input Tax)
     // We separate Tax here.
     const [purchase] = await pool.query(
-      `SELECT ledgerId, subtotal, gst_amount, grand_total FROM purchase_vouchers WHERE companyId = ?`, [companyId]
-    );
+      `SELECT ledgerId, subtotal, gst_amount, grand_total FROM purchase_vouchers WHERE companyId = ?${extraCondition}`, [companyId, ...extraParams]);
 
     let totalPurchaseNum = 0; // Taxable Value
 
@@ -260,8 +290,7 @@ export const getBalanceSheet = async (req, res) => {
 
     // d) Sales (Debit Customer, Credit Sales A/c, Credit Output Tax)
     const [sales] = await pool.query(
-      `SELECT ledgerId, subtotal, gst_amount, grand_total FROM sales_vouchers WHERE companyId = ?`, [companyId]
-    );
+      `SELECT ledgerId, subtotal, gst_amount, grand_total FROM sales_vouchers WHERE companyId = ?${extraCondition}`, [companyId, ...extraParams]);
 
     let totalSalesNum = 0; // Taxable Value
 
@@ -281,8 +310,7 @@ export const getBalanceSheet = async (req, res) => {
 
     // e) Journal
     const [journal] = await pool.query(
-      `SELECT particulars AS ledgerId, debit, credit FROM journal_transactions WHERE companyId = ?`, [companyId]
-    );
+      `SELECT jt.particulars AS ledgerId, jt.debit, jt.credit FROM journal_transactions jt JOIN journal_vouchers jv ON jt.voucherId = jv.id WHERE jt.companyId = ?${extraCondition.replace(/created_by/g, 'jv.created_by')}`, [companyId, ...extraParams]);
     journal.forEach((j) => {
       if (ledgerSummary[j.ledgerId]) {
         ledgerSummary[j.ledgerId].debit += Number(j.debit || 0);
@@ -294,8 +322,7 @@ export const getBalanceSheet = async (req, res) => {
     const [contra] = await pool.query(
       `SELECT fromAccount, toAccount, amount FROM contra_transactions 
        LEFT JOIN contra_vouchers ON contra_vouchers.id = contra_transactions.voucherId
-       WHERE contra_vouchers.companyId = ?`, [companyId]
-    );
+       WHERE contra_vouchers.companyId = ?${extraCondition.replace(/created_by/g, 'contra_vouchers.created_by')}`, [companyId, ...extraParams]);
     contra.forEach((c) => {
       // fromAccount -> Giver -> Credit
       if (ledgerSummary[c.fromAccount]) ledgerSummary[c.fromAccount].credit += Number(c.amount);
@@ -373,15 +400,10 @@ export const getBalanceSheet = async (req, res) => {
 
     // Add Indirect Incomes and Expenses from Ledgers
     Object.values(ledgerSummary).forEach((l) => {
-      // Skip Purchase and Sales accounts from here as we calculated them manually above?
-      // Or if you have ledgers for them, ensure we don't double count.
-      // Usually "Purchase Account" ledger isn't directly credited by voucher logic above unless specifically mapped.
-      // We assume `totalPurchaseNum` and `totalSalesNum` cover the main trading accounts.
-
       if (l.nature === 'income') {
-        totalIncome += l.closingCredit;
+        totalIncome += (l.closingCredit - l.closingDebit);
       } else if (l.nature === 'expense') {
-        totalExpense += l.closingDebit;
+        totalExpense += (l.closingDebit - l.closingCredit);
       }
     });
 
@@ -425,11 +447,12 @@ export const getBalanceSheet = async (req, res) => {
       }
     });
 
-    // Add Net Profit
+    // Add Net Profit to Capital Account (Owner's Capital = Capital + Profit - Drawings)
     if (netProfit !== 0) {
       liabilities.push({
+        ledgerId: "PNL",
         ledgerName: "Profit & Loss A/c",
-        groupName: "Reserves & Surplus",
+        groupName: "Capital Account",
         closingCredit: netProfit > 0 ? netProfit : 0,
         closingDebit: netProfit < 0 ? Math.abs(netProfit) : 0,
       });
@@ -451,9 +474,8 @@ export const getBalanceSheet = async (req, res) => {
     let totalAssets = 0;
     let totalLiabilities = 0;
 
-    assets.forEach(a => totalAssets += a.closingDebit);
+    assets.forEach(a => totalAssets += (a.closingDebit - a.closingCredit));
     liabilities.forEach(l => {
-      // Net off debit balance if any in liabilities list (rare, but for P&L loss)
       totalLiabilities += (l.closingCredit - l.closingDebit);
     });
 
