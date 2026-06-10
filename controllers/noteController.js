@@ -1,6 +1,8 @@
+import { validateStockAvailability } from "../utils/stockValidation.js";
 import pool from "../db.js";
 import { generateNotePDF } from "../utils/notePdf.js";
 import { ensureCreatorColumns, getCreatorFromRequest } from "../utils/creatorTracking.js";
+import { checkVoucherNumberExists } from "../utils/voucherValidation.js";
 
 export const createDebitNote = async (req, res) => {
   const { companyId } = req.params;
@@ -14,6 +16,11 @@ export const createDebitNote = async (req, res) => {
 
     if (!items || !Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ success: false, message: "Items are required" });
+    }
+
+    const isDuplicate = await checkVoucherNumberExists(companyId, "notes", "voucherNo", voucherNo, creator, null, { key: "note_type", value: "debit" });
+    if (isDuplicate) {
+      return res.status(400).json({ success: false, message: "Voucher number already exists" });
     }
 
     const [note] = await pool.query(
@@ -67,7 +74,15 @@ export const createDebitNote = async (req, res) => {
 export const getDebitNote = async (req, res) => {
   const { companyId } = req.params;
   try {
-    const [rows] = await pool.query(`SELECT * FROM notes WHERE companyId = ? AND note_type = "debit" ORDER BY id DESC`, [companyId]);
+    const [rows] = await pool.query(`
+      SELECT notes.*, 
+             creator_user.name AS creator_name,
+             emp_user.name AS employee_name
+      FROM notes 
+      LEFT JOIN users AS creator_user ON notes.created_by_user_id = creator_user.id
+      LEFT JOIN users AS emp_user ON notes.created_by_employee_id = emp_user.employee_id
+      WHERE notes.companyId = ? AND notes.note_type = "debit" 
+      ORDER BY notes.id DESC`, [companyId]);
     res.status(200).json({ success: true, data: rows });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
@@ -86,6 +101,11 @@ export const createCreditNote = async (req, res) => {
 
     if (!items || !Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ success: false, message: "Items are required" });
+    }
+
+    const isDuplicate = await checkVoucherNumberExists(companyId, "notes", "voucherNo", voucherNo, creator, null, { key: "note_type", value: "credit" });
+    if (isDuplicate) {
+      return res.status(400).json({ success: false, message: "Voucher number already exists" });
     }
 
     // Convert empty strings to null for date fields
@@ -142,7 +162,15 @@ export const createCreditNote = async (req, res) => {
 export const getCreditNotes = async (req, res) => {
   const { companyId } = req.params;
   try {
-    const [rows] = await pool.query(`SELECT * FROM notes WHERE companyId = ? AND note_type = "credit" ORDER BY id DESC`, [companyId]);
+    const [rows] = await pool.query(`
+      SELECT notes.*, 
+             creator_user.name AS creator_name,
+             emp_user.name AS employee_name
+      FROM notes 
+      LEFT JOIN users AS creator_user ON notes.created_by_user_id = creator_user.id
+      LEFT JOIN users AS emp_user ON notes.created_by_employee_id = emp_user.employee_id
+      WHERE notes.companyId = ? AND notes.note_type = "credit" 
+      ORDER BY notes.id DESC`, [companyId]);
     res.status(200).json({ success: true, data: rows });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
@@ -232,6 +260,7 @@ export const getNotePDF = async (req, res) => {
 
 export const updateDebitNote = async (req, res) => {
   const { noteId } = req.params;
+  const creator = getCreatorFromRequest(req);
   try {
     const {
       voucherNo, date, partyLedger, purchaseLedger, partyDetails, dispatchDetails, consignorDetails = {}, narration, items,
@@ -240,6 +269,14 @@ export const updateDebitNote = async (req, res) => {
 
     // Convert empty strings to null for date fields
     const sanitizeDate = (val) => !val || val === '' ? null : val;
+
+    const [[existingNote]] = await pool.query("SELECT companyId FROM notes WHERE id = ?", [noteId]);
+    if (!existingNote) return res.status(404).json({ success: false, message: "Note not found" });
+
+    const isDuplicate = await checkVoucherNumberExists(existingNote.companyId, "notes", "voucherNo", voucherNo, creator, noteId, { key: "note_type", value: "debit" });
+    if (isDuplicate) {
+      return res.status(400).json({ success: false, message: "Voucher number already exists" });
+    }
 
     await pool.query(
       `UPDATE notes SET 
@@ -289,6 +326,7 @@ export const updateDebitNote = async (req, res) => {
 
 export const updateCreditNote = async (req, res) => {
   const { noteId } = req.params;
+  const creator = getCreatorFromRequest(req);
   try {
     const {
       voucherNo, date, partyLedger, purchaseLedger, partyDetails, dispatchDetails, consignorDetails = {}, narration, items,
@@ -297,6 +335,14 @@ export const updateCreditNote = async (req, res) => {
 
     // Convert empty strings to null for date fields
     const sanitizeDate = (val) => !val || val === '' ? null : val;
+
+    const [[existingNote]] = await pool.query("SELECT companyId FROM notes WHERE id = ?", [noteId]);
+    if (!existingNote) return res.status(404).json({ success: false, message: "Note not found" });
+
+    const isDuplicate = await checkVoucherNumberExists(existingNote.companyId, "notes", "voucherNo", voucherNo, creator, noteId, { key: "note_type", value: "credit" });
+    if (isDuplicate) {
+      return res.status(400).json({ success: false, message: "Voucher number already exists" });
+    }
 
     await pool.query(
       `UPDATE notes SET 

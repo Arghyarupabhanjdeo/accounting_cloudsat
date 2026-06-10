@@ -3,6 +3,7 @@ import fs from "fs";
 import path from "path";
 import { generateJournalVoucherPDF } from "../utils/journalVoucherPdfUtils.js";
 import { ensureCreatorColumns, getCreatorFromRequest } from "../utils/creatorTracking.js";
+import { checkVoucherNumberExists } from "../utils/voucherValidation.js";
 
 const getAccountName = async (ledgerId, companyId) => {
   if (!ledgerId) return "N/A";
@@ -24,7 +25,7 @@ const getAccountName = async (ledgerId, companyId) => {
 // CREATE JOURNAL VOUCHER
 export const createJournalVoucher = async (req, res) => {
   const { companyId } = req.params;
-  const { date, narration, transactions } = req.body;
+  const { voucherNo, date, narration, transactions } = req.body;
   const creator = getCreatorFromRequest(req);
   console.log(req.body);
 
@@ -56,15 +57,21 @@ export const createJournalVoucher = async (req, res) => {
   const connection = await pool.getConnection();
 
   try {
+    const isDuplicate = await checkVoucherNumberExists(companyId, "journal_vouchers", "voucherNo", voucherNo, creator);
+    if (isDuplicate) {
+      connection.release();
+      return res.status(400).json({ message: "Voucher number already exists" });
+    }
+
     await connection.beginTransaction();
     await ensureCreatorColumns(connection, "journal_vouchers");
 
     // Insert into main voucher table
     const [voucherResult] = await connection.query(
       `INSERT INTO journal_vouchers 
-      (companyId,ledgerId, date, narration, totalDebit, totalCredit)
-      VALUES (?,?, ?, ?, ?, ?)`,
-      [companyId, ledgerIds, date, narration, totalDebit, totalCredit]
+      (companyId, voucherNo, ledgerId, date, narration, totalDebit, totalCredit)
+      VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [companyId, voucherNo, ledgerIds, date, narration, totalDebit, totalCredit]
     );
 
     const voucherId = voucherResult.insertId;
@@ -179,14 +186,20 @@ export const getJournalVouchers = async (req, res) => {
 
   try {
     const [rows] = await pool.query(
-      `SELECT * FROM journal_vouchers WHERE companyId=? ORDER BY id DESC`,
+      `SELECT journal_vouchers.*, 
+              creator_user.name AS creator_name,
+              emp_user.name AS employee_name
+       FROM journal_vouchers
+       LEFT JOIN users AS creator_user ON journal_vouchers.created_by_user_id = creator_user.id
+       LEFT JOIN users AS emp_user ON journal_vouchers.created_by_employee_id = emp_user.employee_id
+       WHERE journal_vouchers.companyId=? 
+       ORDER BY journal_vouchers.id DESC`,
       [companyId]
     );
 
     res.json(rows);
-
-  } catch (err) {
-    console.log(err);
+  } catch (error) {
+    console.log(error);
     res.status(500).json({ message: "Server Error" });
   }
 };
@@ -290,6 +303,8 @@ export const updateJournalVoucher = async (req, res) => {
 const { id } = req.params;
 
 const {
+companyId,
+voucherNo,
 date,
 narration,
 transactions
@@ -319,9 +334,15 @@ const ledgerIds = transactions
 
 const connection =
 await pool.getConnection();
+const creator = getCreatorFromRequest(req);
 
 try {
 
+    const isDuplicate = await checkVoucherNumberExists(companyId, "journal_vouchers", "voucherNo", voucherNo, creator, id);
+    if (isDuplicate) {
+      connection.release();
+      return res.status(400).json({ message: "Voucher number already exists" });
+    }
 
 await connection.beginTransaction();
 
@@ -352,6 +373,7 @@ await connection.query(
   `
   UPDATE journal_vouchers
   SET
+    voucherNo = ?,
     ledgerId = ?,
     date = ?,
     narration = ?,
@@ -360,6 +382,7 @@ await connection.query(
   WHERE id = ?
   `,
   [
+    voucherNo,
     ledgerIds,
     date,
     narration,

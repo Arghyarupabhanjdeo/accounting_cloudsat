@@ -3,6 +3,7 @@ import fs from "fs";
 import path from "path";
 import { generateReceiptPDF } from "../utils/receiptPdfUtils.js";
 import { ensureCreatorColumns, getCreatorFromRequest } from "../utils/creatorTracking.js";
+import { checkVoucherNumberExists } from "../utils/voucherValidation.js";
 
 const getAccountName = async (ledgerId, companyId) => {
   if (!ledgerId) return "N/A";
@@ -67,6 +68,11 @@ export const createReceiveVoucher = async (req, res) => {
     const totalAmount = items.reduce((sum, item) => sum + Number(item.amount || 0), 0);
     const finalVoucherNo = voucherNo || Date.now().toString();
 
+    const isDuplicate = await checkVoucherNumberExists(companyId, "receive_vouchers", "voucherId", finalVoucherNo, creator);
+    if (isDuplicate) {
+      return res.status(400).json({ success: false, message: "Voucher number already exists" });
+    }
+
     for (let i = 0; i < items.length; i++) {
       const { ledgerId, amount } = items[i];
       await pool.query(
@@ -121,9 +127,10 @@ export const getReceiveVoucher = async (req, res) => {
   const { companyId } = req.params
   try {
     const [rows] = await pool.query(
-      `SELECT r.id, r.voucherId, r.companyId, DATE_FORMAT(r.date, '%Y-%m-%d') AS date, r.receiptAccountId, r.instrumentType, r.referenceNo, r.narration, r.customer, SUM(r.amount) AS amount, r.totalAmount, r.pdf_path, MAX(r.created_by_user_id) AS created_by_user_id, MAX(r.created_by_employee_id) AS created_by_employee_id, MAX(u.name) AS creator_name
+      `SELECT r.id, r.voucherId, r.companyId, DATE_FORMAT(r.date, '%Y-%m-%d') AS date, r.receiptAccountId, r.instrumentType, r.referenceNo, r.narration, r.customer, SUM(r.amount) AS amount, r.totalAmount, r.pdf_path, MAX(r.created_by_user_id) AS created_by_user_id, MAX(r.created_by_employee_id) AS created_by_employee_id, MAX(u.name) AS creator_name, MAX(eu.name) AS employee_name
        FROM receive_vouchers r
        LEFT JOIN users u ON r.created_by_user_id = u.id
+         LEFT JOIN users eu ON r.created_by_employee_id = eu.employee_id
        WHERE r.companyId = ?
        GROUP BY IFNULL(NULLIF(r.voucherId, ''), r.id)
        ORDER BY MAX(r.id) DESC`,
@@ -394,6 +401,7 @@ export const deleteReceiveVoucher = async (req, res) => {
 // ------------------------------------------------------
 export const updateReceiveVoucher = async (req, res) => {
   const { voucherId } = req.params;
+  const creator = getCreatorFromRequest(req);
   const {
     voucherNo, // This will be the new/updated voucherNo
     date,
@@ -413,6 +421,20 @@ export const updateReceiveVoucher = async (req, res) => {
 
   try {
     await conn.beginTransaction();
+
+    const isDuplicate = await checkVoucherNumberExists(companyId || req.body.companyId, "receive_vouchers", "voucherId", voucherNo || voucherId, creator);
+    // Note: since receive_vouchers stores multiple rows per "voucherId", checkVoucherNumberExists doesn't work perfectly with excludeId.
+    // However, since we check voucherNo, if they changed the number, we need to check if the NEW number already exists.
+    // We should do a manual query to correctly exclude all rows belonging to the CURRENT voucher.
+    
+    if (voucherNo && voucherNo !== voucherId) {
+       const [[existing]] = await conn.query("SELECT id FROM receive_vouchers WHERE companyId = ? AND voucherId = ? AND (created_by_user_id = ? OR created_by_employee_id = ?)", [companyId, voucherNo, creator.userId || 0, creator.employeeId || 0]);
+       if (existing) {
+          await conn.rollback();
+          conn.release();
+          return res.status(400).json({ success: false, message: "Voucher number already exists" });
+       }
+    }
 
     // 1️⃣ Fetch old items to revert ledger balances
     const [oldRows] = await conn.query(

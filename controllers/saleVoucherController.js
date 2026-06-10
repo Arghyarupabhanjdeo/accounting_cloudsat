@@ -1,9 +1,11 @@
+import { validateStockAvailability } from "../utils/stockValidation.js";
 import pool from "../db.js";
 import path from "path";
 // import { generatePDF } from "../utils/pdfUtils.js";
 import { generateDocumentPDF } from "../utils/format.js";
 import { logAction } from "./auditLogController.js";
 import { ensureCreatorColumns, getCreatorFromRequest } from "../utils/creatorTracking.js";
+import { checkVoucherNumberExists } from "../utils/voucherValidation.js";
 
 export const createSalesVoucher = async (req, res) => {
   const creator = getCreatorFromRequest(req);
@@ -63,10 +65,17 @@ export const createSalesVoucher = async (req, res) => {
 
   console.log("SALES-VOUCHER-BODY => ", req.body);
 
-  const connection = await pool.getConnection();
+    const connection = await pool.getConnection();
   await connection.beginTransaction();
 
   try {
+    const isDuplicate = await checkVoucherNumberExists(companyId, "sales_vouchers", "invoiceNo", invoiceNo, creator);
+    if (isDuplicate) {
+      await connection.rollback();
+      connection.release();
+      return res.status(400).json({ success: false, message: "Voucher number already exists" });
+    }
+
     await ensureCreatorColumns(connection, "sales_vouchers");
     /* ================= SENDER/COMPANY INFO ================= */
    const [companyRows] = await connection.query(
@@ -438,6 +447,7 @@ country: sender.country || "",
 
 export const updateSaleVoucher = async (req, res) => {
   const { id } = req.params;
+  const creator = getCreatorFromRequest(req);
   const {
     companyId, date, customer, ledgerId, subtotal, gst_percentage, gst_amount,
     grand_total, round_off, narration, invoiceNo, igst, cgst, sgst, items, ewayBillDetails = {},
@@ -473,25 +483,18 @@ export const updateSaleVoucher = async (req, res) => {
 
   const connection = await pool.getConnection();
   try {
+    await validateStockAvailability(companyId, items, creator);
     await connection.beginTransaction();
 
-    // 1. Revert old stock — add back quantities that were previously sold
-    const [oldItems] = await connection.query(`SELECT * FROM sales_items WHERE voucherId = ?`, [id]);
-    for (let item of oldItems) {
-      const soldQty = parseFloat(item.qty) || 0;
-      const [tradingRows] = await connection.query(
-        `SELECT id, openingBalanceQty FROM stocks WHERE companyId = ? AND LOWER(name) = LOWER(?) AND isDeleted = 0 LIMIT 1`,
-        [companyId, item.item]
-      );
-      if (tradingRows.length > 0) {
-        await connection.query(`UPDATE stocks SET openingBalanceQty = openingBalanceQty + ? WHERE id = ?`, [soldQty, tradingRows[0].id]);
-      } else {
-        await connection.query(
-          `UPDATE manufacturing_journal SET finishedQty = finishedQty + ? WHERE companyId = ? AND LOWER(productName) = LOWER(?) LIMIT 1`,
-          [soldQty, companyId, item.item]
-        );
-      }
+    const isDuplicate = await checkVoucherNumberExists(companyId, "sales_vouchers", "invoiceNo", invoiceNo, creator, id);
+    if (isDuplicate) {
+      await connection.rollback();
+      connection.release();
+      return res.status(400).json({ success: false, message: "Voucher number already exists" });
     }
+
+    // 1. Revert old stock — add back quantities that were previously sold
+    // Revert stock logic removed
 
     // 2. Update header
     const [companyRows] = await connection.query(
@@ -704,9 +707,11 @@ export const getSaleVoucher = async (req, res) => {
     const [rows] = await pool.query(
       `SELECT sales_vouchers.*, 
               DATE_FORMAT(sales_vouchers.date, '%Y-%m-%d') AS date,
-              users.name AS creator_name
+              creator_user.name AS creator_name,
+              emp_user.name AS employee_name
        FROM sales_vouchers
-       LEFT JOIN users ON sales_vouchers.created_by_user_id = users.id
+       LEFT JOIN users AS creator_user ON sales_vouchers.created_by_user_id = creator_user.id
+       LEFT JOIN users AS emp_user ON sales_vouchers.created_by_employee_id = emp_user.employee_id
        WHERE sales_vouchers.companyId = ?`,
       [companyId]
     );
@@ -1094,22 +1099,7 @@ export const deleteSalesVoucher = async (req, res) => {
     const companyId = oldValue.companyId;
 
     // Revert stock quantities
-    const [oldItems] = await connection.query(`SELECT * FROM sales_items WHERE voucherId = ?`, [id]);
-    for (let item of oldItems) {
-      const soldQty = parseFloat(item.qty) || 0;
-      const [tradingRows] = await connection.query(
-        `SELECT id, openingBalanceQty FROM stocks WHERE companyId = ? AND LOWER(name) = LOWER(?) AND isDeleted = 0 LIMIT 1`,
-        [companyId, item.item]
-      );
-      if (tradingRows.length > 0) {
-        await connection.query(`UPDATE stocks SET openingBalanceQty = openingBalanceQty + ? WHERE id = ?`, [soldQty, tradingRows[0].id]);
-      } else {
-        await connection.query(
-          `UPDATE manufacturing_journal SET finishedQty = finishedQty + ? WHERE companyId = ? AND LOWER(productName) = LOWER(?) LIMIT 1`,
-          [soldQty, companyId, item.item]
-        );
-      }
-    }
+    // Revert stock logic removed
 
     // Delete items first
     await connection.query(`DELETE FROM sales_items WHERE voucherId = ?`, [id]);

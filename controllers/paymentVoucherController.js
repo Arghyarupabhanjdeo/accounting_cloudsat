@@ -3,6 +3,7 @@ import fs from "fs";
 import path from "path";
 import { generatePaymentPDF } from "../utils/paymentPdfUtils.js";
 import { ensureCreatorColumns, getCreatorFromRequest } from "../utils/creatorTracking.js";
+import { checkVoucherNumberExists } from "../utils/voucherValidation.js";
 
 const getAccountName = async (ledgerId, companyId) => {
   if (!ledgerId) return "N/A";
@@ -123,6 +124,12 @@ export const createPaymentVoucher = async (req, res) => {
   const conn = await pool.getConnection();
 
   try {
+    const isDuplicate = await checkVoucherNumberExists(companyId, "payment_vouchers", "voucherNo", voucherNo, creator);
+    if (isDuplicate) {
+      conn.release();
+      return res.status(400).json({ message: "Voucher number already exists" });
+    }
+
     await conn.beginTransaction();
     await ensureCreatorColumns(conn, "payment_vouchers");
 
@@ -218,9 +225,10 @@ export const getAllPaymentVouchers = async (req, res) => {
 
   try {
     const [rows] = await pool.query(
-      `SELECT p.id, p.companyId, p.voucherNo, DATE_FORMAT(p.date, '%Y-%m-%d') AS date, p.accountType, p.narration, SUM(p.amount) AS amount, p.totalAmount, p.pdf_path, MAX(p.created_by_user_id) AS created_by_user_id, MAX(p.created_by_employee_id) AS created_by_employee_id, MAX(u.name) AS creator_name
+      `SELECT p.id, p.companyId, p.voucherNo, DATE_FORMAT(p.date, '%Y-%m-%d') AS date, p.accountType, p.narration, SUM(p.amount) AS amount, p.totalAmount, p.pdf_path, MAX(p.created_by_user_id) AS created_by_user_id, MAX(p.created_by_employee_id) AS created_by_employee_id, MAX(u.name) AS creator_name, MAX(eu.name) AS employee_name
        FROM payment_vouchers p
        LEFT JOIN users u ON p.created_by_user_id = u.id
+         LEFT JOIN users eu ON p.created_by_employee_id = eu.employee_id
        WHERE p.companyId = ?
        GROUP BY IFNULL(NULLIF(p.voucherNo, ''), p.id)
        ORDER BY MAX(p.id) DESC`,
@@ -421,8 +429,15 @@ export const updatePaymentVoucher = async (req, res) => {
   }
 
   const conn = await pool.getConnection();
+  const creator = getCreatorFromRequest(req);
 
   try {
+    const isDuplicate = await checkVoucherNumberExists(companyId, "payment_vouchers", "voucherNo", voucherNo, creator, id);
+    if (isDuplicate) {
+      conn.release();
+      return res.status(400).json({ message: "Voucher number already exists" });
+    }
+
     await conn.beginTransaction();
 
     const [[oldVoucher]] = await conn.query(

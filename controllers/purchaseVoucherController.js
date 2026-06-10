@@ -5,6 +5,7 @@ import fs from "fs";
 import { generateDocumentPDF } from "../utils/format.js";
 import { logAction } from "./auditLogController.js";
 import { ensureCreatorColumns, getCreatorFromRequest } from "../utils/creatorTracking.js";
+import { checkVoucherNumberExists } from "../utils/voucherValidation.js";
 
 // 🔵 CREATE PURCHASE VOUCHER
 export const createPurchaseVoucher = async (req, res) => {
@@ -45,6 +46,13 @@ export const createPurchaseVoucher = async (req, res) => {
       consignorName, consignorGSTIN, consignorState, consignorPincode, consignorAddress, consignorEmail,
       carrierName
     } = req.body;
+
+    const isDuplicate = await checkVoucherNumberExists(companyId, "purchase_vouchers", "invoiceNo", invoiceNo, creator);
+    if (isDuplicate) {
+      await conn.rollback();
+      conn.release();
+      return res.status(400).json({ error: "Voucher number already exists" });
+    }
 
     const [companyRows] = await conn.query(
       `SELECT name, address, pinCode, gstin, state, email, mobile, city FROM companies WHERE id = ?`,
@@ -182,26 +190,18 @@ export const createPurchaseVoucher = async (req, res) => {
       );
 
       if (stockCheck.length > 0) {
-        const stockId = stockCheck[0].id;
-        const newQty = parseFloat(stockCheck[0].openingBalanceQty || 0) + parseFloat(item.qty || 0);
-        await conn.query(
-          `UPDATE stocks SET openingBalanceQty = ? WHERE id = ?`,
-          [newQty, stockId]
-        );
-      } else {
+          // Stock exists, no need to update opening balance
+        } else {
         await conn.query(
           `INSERT INTO stocks 
             (companyId, name, alias, under, units, maintainInBatches, trackDateOfManufacture, expiryDateOfBatches,
              rateOfDuty, gstApplicable, hsn, openingBalanceQty, openingBalanceRate, openingBalanceValue)
-           VALUES (?, ?, '', 'Purchases', 'Nos', 0, 0, 0, 0, 0, ?, ?, ?, ?)`,
-          [
-            companyId,
-            item.item,
-            item.hsn_code || '',
-            Number(item.qty),
-            Number(item.rate),
-            Number(item.amount)
-          ]
+           VALUES (?, ?, '', 'Purchases', 'Nos', 0, 0, 0, 0, 0, 0, 0, 0)`,
+            [
+              companyId,
+              item.item,
+              item.hsn_code || ''
+            ]
         );
       }
     }
@@ -319,6 +319,7 @@ export const createPurchaseVoucher = async (req, res) => {
 export const updatePurchaseVoucher = async (req, res) => {
   const { id } = req.params;
   const { companyId } = req.body;
+  const creator = getCreatorFromRequest(req);
   const conn = await pool.getConnection();
 
   try {
@@ -354,18 +355,15 @@ export const updatePurchaseVoucher = async (req, res) => {
       carrierName
     } = req.body;
 
-    // 1. Revert old stock — subtract quantities that were purchased
-    const [oldItems] = await conn.query(`SELECT * FROM purchase_voucher_items WHERE voucher_id = ?`, [id]);
-    for (let item of oldItems) {
-      const purchaseQty = parseFloat(item.qty) || 0;
-      const [tradingRows] = await conn.query(
-        `SELECT id, openingBalanceQty FROM stocks WHERE companyId = ? AND LOWER(name) = LOWER(?) AND isDeleted = 0 LIMIT 1`,
-        [companyId, item.item_name]
-      );
-      if (tradingRows.length > 0) {
-        await conn.query(`UPDATE stocks SET openingBalanceQty = GREATEST(0, openingBalanceQty - ?) WHERE id = ?`, [purchaseQty, tradingRows[0].id]);
-      }
+    const isDuplicate = await checkVoucherNumberExists(companyId, "purchase_vouchers", "invoiceNo", invoiceNo, creator, id);
+    if (isDuplicate) {
+      await conn.rollback();
+      conn.release();
+      return res.status(400).json({ error: "Voucher number already exists" });
     }
+
+    // 1. Revert old stock — subtract quantities that were purchased
+    // Revert logic removed for static opening balance
 
     const [companyRows] = await conn.query(
       `SELECT name, address, pinCode, gstin, state, email, mobile, city, country FROM companies WHERE id = ?`,
@@ -511,26 +509,18 @@ export const updatePurchaseVoucher = async (req, res) => {
       );
 
       if (stockCheck.length > 0) {
-        const stockId = stockCheck[0].id;
-        const newQty = parseFloat(stockCheck[0].openingBalanceQty || 0) + parseFloat(item.qty || 0);
-        await conn.query(
-          `UPDATE stocks SET openingBalanceQty = ? WHERE id = ?`,
-          [newQty, stockId]
-        );
-      } else {
+          // Stock exists, no need to update opening balance
+        } else {
         await conn.query(
           `INSERT INTO stocks 
             (companyId, name, alias, under, units, maintainInBatches, trackDateOfManufacture, expiryDateOfBatches,
              rateOfDuty, gstApplicable, hsn, openingBalanceQty, openingBalanceRate, openingBalanceValue)
-           VALUES (?, ?, '', 'Purchases', 'Nos', 0, 0, 0, 0, 0, ?, ?, ?, ?)`,
-          [
-            companyId,
-            item.item,
-            item.hsn_code || '',
-            Number(item.qty),
-            Number(item.rate),
-            Number(item.amount)
-          ]
+           VALUES (?, ?, '', 'Purchases', 'Nos', 0, 0, 0, 0, 0, 0, 0, 0)`,
+            [
+              companyId,
+              item.item,
+              item.hsn_code || ''
+            ]
         );
       }
     }
@@ -663,17 +653,7 @@ export const deletePurchaseVoucher = async (req, res) => {
     const companyId = oldValue.companyId;
 
     // Revert stock quantities (subtract purchased quantities from stocks)
-    const [oldItems] = await connection.query(`SELECT * FROM purchase_voucher_items WHERE voucher_id = ?`, [id]);
-    for (let item of oldItems) {
-      const purchaseQty = parseFloat(item.qty) || 0;
-      const [tradingRows] = await connection.query(
-        `SELECT id, openingBalanceQty FROM stocks WHERE companyId = ? AND LOWER(name) = LOWER(?) AND isDeleted = 0 LIMIT 1`,
-        [companyId, item.item_name]
-      );
-      if (tradingRows.length > 0) {
-        await connection.query(`UPDATE stocks SET openingBalanceQty = GREATEST(0, openingBalanceQty - ?) WHERE id = ?`, [purchaseQty, tradingRows[0].id]);
-      }
-    }
+    // Revert logic removed for static opening balance
 
     // Delete items first
     await connection.query(`DELETE FROM purchase_voucher_items WHERE voucher_id = ?`, [id]);
@@ -891,9 +871,11 @@ export const getPurchaseVouchersAll = async (req, res) => {
     const [rows] = await pool.query(
       `SELECT purchase_vouchers.*, 
               DATE_FORMAT(purchase_vouchers.date, '%Y-%m-%d') AS date,
-              users.name AS creator_name
+              creator_user.name AS creator_name,
+              emp_user.name AS employee_name
        FROM purchase_vouchers
-       LEFT JOIN users ON purchase_vouchers.created_by_user_id = users.id
+       LEFT JOIN users AS creator_user ON purchase_vouchers.created_by_user_id = creator_user.id
+       LEFT JOIN users AS emp_user ON purchase_vouchers.created_by_employee_id = emp_user.employee_id
        WHERE purchase_vouchers.companyId = ?
        ORDER BY purchase_vouchers.created_at DESC`,
       [companyId]
@@ -1068,15 +1050,7 @@ export const uploadFromExcel = async (req, res) => {
         );
 
         if (stock.length) {
-          // Update qty
-          await conn.query(
-            `
-            UPDATE stocks
-            SET openingBalanceQty = ?
-            WHERE id = ?
-            `,
-            [stock[0].openingBalanceQty + it.qty, stock[0].id]
-          );
+          // Stock exists, no need to update opening balance
         } else {
           // Create stock
           await conn.query(
@@ -1086,14 +1060,11 @@ export const uploadFromExcel = async (req, res) => {
               companyId, name, under, units,
               openingBalanceQty, openingBalanceRate, openingBalanceValue
             )
-            VALUES (?, ?, 'Purchases', 'Nos', ?, ?, ?)
+            VALUES (?, ?, 'Purchases', 'Nos', 0, 0, 0)
             `,
             [
               companyId,
               it.item,
-              it.qty,
-              it.rate,
-              it.amount,
             ]
           );
         }
@@ -1195,26 +1166,18 @@ export const bulkCreatePurchaseVoucher = async (req, res) => {
         );
 
         if (rows.length > 0) {
-          // Update existing stock
-          const newQty = parseFloat(rows[0].openingBalanceQty) + parseFloat(item.qty);
-          await conn.query(
-            `UPDATE stocks SET openingBalanceQty = ? WHERE id = ?`,
-            [newQty, rows[0].id]
-          );
+          // Stock exists, no need to update opening balance
         } else {
           // Create new stock entry
           await conn.query(
             `INSERT INTO stocks 
               (companyId, name, alias, under, units, maintainInBatches, trackDateOfManufacture, expiryDateOfBatches,
                rateOfDuty, gstApplicable, hsn, openingBalanceQty, openingBalanceRate, openingBalanceValue)
-             VALUES (?, ?, '', 'Purchases', 'Nos', 0, 0, 0, 0, 0, ?, ?, ?, ?)`,
+             VALUES (?, ?, '', 'Purchases', 'Nos', 0, 0, 0, 0, 0, 0, 0, 0)`,
             [
               companyId,
               item.item,
-              item.hsn_code || '',
-              item.qty,
-              item.rate,
-              item.amount
+              item.hsn_code || ''
             ]
           );
         }

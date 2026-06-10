@@ -34,6 +34,7 @@ import gstSummaryRoutes from "./routes/gstSummaryRoutes.js";
 
 import invoiceRoutes from "./routes/invoiceRoutes.js";
 import challanRoutes from "./routes/challanRoutes.js";
+import voucherNumberRoutes from "./routes/voucherNumberRoutes.js";
 // import subscriptionRoutes from "./routes/subscriptionRoutes.js";
 import { initSubscriptionCron } from "./utils/subscriptionCron.js";
 import pool from "./db.js";
@@ -130,6 +131,7 @@ app.use("/api/v1/gst-summary", gstSummaryRoutes);
 
 app.use("/api/v1/invoice", invoiceRoutes);
 app.use("/api/v1/challans ", challanRoutes);
+app.use("/api/v1/voucher-number", voucherNumberRoutes);
 // app.use("/api/v1/subscription", subscriptionRoutes);
 app.get("/", (req, res) => {
   res.send("Server Is Running ......");

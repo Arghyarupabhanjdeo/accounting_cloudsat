@@ -1,10 +1,9 @@
+import { getCreatorFromRequest } from "../utils/creatorTracking.js";
 import pool from "../db.js";
-import { ensureCreatorColumns, getCreatorFromRequest } from "../utils/creatorTracking.js";
 
 // ➜ Add Ledger Entry
 export const addLedger = async (req, res) => {
   const { companyId } = req.params;
-  const creator = getCreatorFromRequest(req);
   console.log(req.body);
   
   const {
@@ -16,11 +15,10 @@ export const addLedger = async (req, res) => {
   } = req.body;
 
   try {
-    await ensureCreatorColumns(pool, "trial_balance");
     const [result] = await pool.query(
       `INSERT INTO trial_balance 
-        (companyId, ledgerName, openingDebit, openingCredit, closingDebit, closingCredit, created_by_user_id, created_by_employee_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        (companyId, ledgerName, openingDebit, openingCredit, closingDebit, closingCredit)
+       VALUES (?, ?, ?, ?, ?, ?)`,
       [
         companyId,
         ledgerName,
@@ -28,8 +26,6 @@ export const addLedger = async (req, res) => {
         openingCredit || 0,
         closingDebit || 0,
         closingCredit || 0,
-        creator.userId,
-        creator.employeeId,
       ]
     );
 
@@ -410,7 +406,19 @@ export const deleteLedger = async (req, res) => {
 export const trial_balance = async (req, res) => {
   const { companyId } = req.params;
 
-  try {
+  
+  const creator = getCreatorFromRequest(req);
+  let extraCondition = "";
+  let extraParams = [];
+
+  if (creator.employeeId) {
+    extraCondition = " AND created_by_employee_id = ?";
+    extraParams.push(creator.employeeId);
+  } else if (creator.userId) {
+    extraCondition = " AND created_by_user_id = ?";
+    extraParams.push(creator.userId);
+  }
+try {
     // ----------------------------------------------------------
     // 1️⃣ Fetch Ledgers & Groups
     // ----------------------------------------------------------
@@ -420,17 +428,37 @@ export const trial_balance = async (req, res) => {
     );
 
     const [groups] = await pool.query(
-      `SELECT * FROM groups WHERE companyId = ?`,
+      `SELECT * FROM groups WHERE companyId = ? OR companyId IS NULL`,
       [companyId]
     );
 
-    // Map groups by ID
+    // Map groups by Name (hierarchy depends on groupName and under)
+    const groupMapByName = {};
+    groups.forEach((g) => {
+      groupMapByName[g.groupName] = {
+        id: g.id,
+        groupName: g.groupName,
+        under: g.under || null,
+        nature: g.nature?.toLowerCase() || "asset",
+        subGroups: {},
+        ledgers: [],
+        totalDebit: 0,
+        totalCredit: 0
+      };
+    });
+
+    // Ensure virtual groups exist
+    if (!groupMapByName["Purchase Accounts"]) {
+      groupMapByName["Purchase Accounts"] = { groupName: "Purchase Accounts", under: null, subGroups: {}, ledgers: [], totalDebit: 0, totalCredit: 0 };
+    }
+    if (!groupMapByName["Sales Accounts"]) {
+      groupMapByName["Sales Accounts"] = { groupName: "Sales Accounts", under: null, subGroups: {}, ledgers: [], totalDebit: 0, totalCredit: 0 };
+    }
+
+    // Map groups by ID for direct lookup from ledgers
     const groupMap = {};
     groups.forEach((g) => {
-      groupMap[g.id] = {
-        groupName: g.groupName,
-        nature: g.nature?.toLowerCase(),
-      };
+      groupMap[g.id] = groupMapByName[g.groupName];
     });
 
     // Prepare Ledger Summary
@@ -459,9 +487,7 @@ export const trial_balance = async (req, res) => {
     // 2️⃣ PAYMENT VOUCHER → CREDIT (Bank/Cash)
     // ----------------------------------------------------------
     const [payment] = await pool.query(
-      `SELECT ledgerId, amount FROM payment_vouchers WHERE companyId = ?`,
-      [companyId]
-    );
+      `SELECT ledgerId, amount FROM payment_vouchers WHERE companyId = ?${extraCondition}`, [companyId, ...extraParams]);
 
     payment.forEach((p) => {
       if (ledgerSummary[p.ledgerId]) {
@@ -474,10 +500,7 @@ export const trial_balance = async (req, res) => {
     // 3️⃣ RECEIVE VOUCHER → DEBIT (Bank/Cash)
     // ----------------------------------------------------------
     const [receive] = await pool.query(
-      `SELECT customer AS ledgerId, amount 
-       FROM receive_vouchers WHERE companyId = ?`,
-      [companyId]
-    );
+      `SELECT customer AS ledgerId, amount FROM receive_vouchers WHERE companyId = ?${extraCondition}`, [companyId, ...extraParams]);
 
     receive.forEach((r) => {
       if (ledgerSummary[r.ledgerId]) {
@@ -492,10 +515,7 @@ export const trial_balance = async (req, res) => {
     //    2. Debit Purchase Account (Virtual)
     // ----------------------------------------------------------
     const [purchase] = await pool.query(
-      `SELECT ledgerId, grand_total AS amount 
-       FROM purchase_vouchers WHERE companyId = ?`,
-      [companyId]
-    );
+      `SELECT ledgerId, grand_total AS amount FROM purchase_vouchers WHERE companyId = ?${extraCondition}`, [companyId, ...extraParams]);
 
     let totalPurchase = 0;
 
@@ -513,10 +533,7 @@ export const trial_balance = async (req, res) => {
     //    2. Credit Sales Account (Virtual)
     // ----------------------------------------------------------
     const [sales] = await pool.query(
-      `SELECT ledgerId, grand_total AS amount 
-       FROM sales_vouchers WHERE companyId = ?`,
-      [companyId]
-    );
+      `SELECT ledgerId, grand_total AS amount FROM sales_vouchers WHERE companyId = ?${extraCondition}`, [companyId, ...extraParams]);
 
     let totalSales = 0;
 
@@ -532,10 +549,7 @@ export const trial_balance = async (req, res) => {
     // 6️⃣ JOURNAL TRANSACTIONS → DR/CR
     // ----------------------------------------------------------
     const [journal] = await pool.query(
-      `SELECT particulars AS ledgerId, debit, credit 
-       FROM journal_transactions WHERE companyId = ?`,
-      [companyId]
-    );
+      `SELECT jt.particulars AS ledgerId, jt.debit, jt.credit FROM journal_transactions jt JOIN journal_vouchers jv ON jt.voucherId = jv.id WHERE jt.companyId = ?${extraCondition.replace(/created_by/g, 'jv.created_by')}`, [companyId, ...extraParams]);
 
     journal.forEach((j) => {
       if (ledgerSummary[j.ledgerId]) {
@@ -553,9 +567,7 @@ export const trial_balance = async (req, res) => {
       `SELECT fromAccount, toAccount, amount 
        FROM contra_transactions 
        LEFT JOIN contra_vouchers ON contra_vouchers.id = contra_transactions.voucherId
-       WHERE contra_vouchers.companyId = ?`,
-      [companyId]
-    );
+       WHERE contra_vouchers.companyId = ?${extraCondition.replace(/created_by/g, 'contra_vouchers.created_by')}`, [companyId, ...extraParams]);
 
     contra.forEach((c) => {
       if (ledgerSummary[c.fromAccount]) {
@@ -626,30 +638,67 @@ export const trial_balance = async (req, res) => {
     });
 
     // ----------------------------------------------------------
-    // 🔟 GROUP WISE TRIAL BALANCE
+    // 🔟 HIERARCHICAL GROUP WISE TRIAL BALANCE
     // ----------------------------------------------------------
-    const groupWise = {};
     const ledgerList = Object.values(ledgerSummary);
 
-    // Sort alphabetically by group name
-    ledgerList.sort((a, b) => a.groupName.localeCompare(b.groupName));
-
+    // 1. Assign ledgers to their respective groups
     ledgerList.forEach((l) => {
-      if (!groupWise[l.groupName]) {
-        groupWise[l.groupName] = {
-          groupName: l.groupName,
-          nature: l.nature,
-          totalDebit: 0,
-          totalCredit: 0,
-          ledgers: [],
-        };
+      const g = groupMapByName[l.groupName];
+      if (g) {
+        g.ledgers.push(l);
+        g.totalDebit += l.closingDebit;
+        g.totalCredit += l.closingCredit;
+      } else {
+        // If no group found, create a dummy one
+        if (!groupMapByName["Others"]) {
+          groupMapByName["Others"] = {
+            groupName: "Others",
+            under: null,
+            subGroups: {},
+            ledgers: [],
+            totalDebit: 0,
+            totalCredit: 0
+          };
+        }
+        groupMapByName["Others"].ledgers.push(l);
+        groupMapByName["Others"].totalDebit += l.closingDebit;
+        groupMapByName["Others"].totalCredit += l.closingCredit;
       }
-      
-      groupWise[l.groupName].ledgers.push(l);
-      
-      // Accumulate Group Totals
-      groupWise[l.groupName].totalDebit += l.closingDebit;
-      groupWise[l.groupName].totalCredit += l.closingCredit;
+    });
+
+    // 2. Build Hierarchy & Calculate Rollups
+    const groupWise = {};
+
+    // Link subGroups
+    Object.values(groupMapByName).forEach((g) => {
+      if (g.under && g.under !== "Primary" && groupMapByName[g.under]) {
+        groupMapByName[g.under].subGroups[g.groupName] = g;
+      } else {
+        // It's a primary group
+        groupWise[g.groupName] = g;
+      }
+    });
+
+    // Post-order traversal to calculate totals
+    const calculateTotals = (g) => {
+      Object.values(g.subGroups).forEach((subG) => {
+        calculateTotals(subG);
+        g.totalDebit += subG.totalDebit;
+        g.totalCredit += subG.totalCredit;
+      });
+      // Sort ledgers alphabetically
+      g.ledgers.sort((a, b) => a.ledgerName.localeCompare(b.ledgerName));
+    };
+
+    Object.values(groupWise).forEach((g) => calculateTotals(g));
+    
+    // Filter out completely empty root groups
+    Object.keys(groupWise).forEach((key) => {
+      const g = groupWise[key];
+      if (g.totalDebit === 0 && g.totalCredit === 0 && g.ledgers.length === 0 && Object.keys(g.subGroups).length === 0) {
+        delete groupWise[key];
+      }
     });
 
     // ----------------------------------------------------------

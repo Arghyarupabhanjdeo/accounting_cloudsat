@@ -3,6 +3,7 @@ import fs from "fs";
 import path from "path";
 import { generateContraVoucherPDF } from "../utils/contraVoucherPdfUtils.js";
 import { ensureCreatorColumns, getCreatorFromRequest } from "../utils/creatorTracking.js";
+import { checkVoucherNumberExists } from "../utils/voucherValidation.js";
 const normalizeLedgerId = (id) => {
 
   if (
@@ -193,15 +194,9 @@ export const createContraVoucher = async (req, res) => {
     transactions,
   } = req.body;
 // Check duplicate voucher number
-const [[existingVoucher]] = await pool.query(
-  `SELECT id
-   FROM contra_vouchers
-   WHERE companyId = ?
-   AND voucherNo = ?`,
-  [companyId, voucherNo]
-);
+const isDuplicate = await checkVoucherNumberExists(companyId, "contra_vouchers", "voucherNo", voucherNo, creator);
 
-if (existingVoucher) {
+if (isDuplicate) {
   return res.status(400).json({
     success: false,
     message: `Voucher No ${voucherNo} already exists`
@@ -541,16 +536,9 @@ export const updateContraVoucher = async (req, res) => {
     const activeCompanyId = companyId || oldVoucher.companyId;
 
     // Check duplicate voucher number
-const [[duplicateVoucher]] = await conn.query(
-  `SELECT id
-   FROM contra_vouchers
-   WHERE companyId = ?
-   AND voucherNo = ?
-   AND id <> ?`,
-  [activeCompanyId, voucherNo, id]
-);
+const isDuplicate = await checkVoucherNumberExists(activeCompanyId, "contra_vouchers", "voucherNo", voucherNo, creator, id);
 
-if (duplicateVoucher) {
+if (isDuplicate) {
   await conn.rollback();
 
   return res.status(400).json({
