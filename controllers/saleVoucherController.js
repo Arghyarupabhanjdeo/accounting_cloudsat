@@ -47,7 +47,7 @@ export const createSalesVoucher = async (req, res) => {
     dispatchDocNo,
     dispatchedThrough,
     destination,
-   
+
     billOfLading,
     motorVehicleNo,
     dispatchDate,
@@ -65,7 +65,7 @@ export const createSalesVoucher = async (req, res) => {
 
   console.log("SALES-VOUCHER-BODY => ", req.body);
 
-    const connection = await pool.getConnection();
+  const connection = await pool.getConnection();
   await connection.beginTransaction();
 
   try {
@@ -78,10 +78,10 @@ export const createSalesVoucher = async (req, res) => {
 
     await ensureCreatorColumns(connection, "sales_vouchers");
     /* ================= SENDER/COMPANY INFO ================= */
-   const [companyRows] = await connection.query(
-  `SELECT name, address, city, pinCode, gstin, state, email, mobile FROM companies WHERE id = ?`,
-  [companyId]
-);
+    const [companyRows] = await connection.query(
+      `SELECT name, address, city, pinCode, gstin, state, email, mobile FROM companies WHERE id = ?`,
+      [companyId]
+    );
     const company = companyRows[0] || {};
 
     /* ================= E-WAY BILL & FALLBACKS ================= */
@@ -337,9 +337,9 @@ export const createSalesVoucher = async (req, res) => {
       sender: {
         company_name: consignorName || sender.name || "",
         address: consignorAddress || sender.address || "",
-       city: sender.city || "",
+        city: sender.city || "",
 
-country: sender.country || "",
+        country: sender.country || "",
         pincode: consignorPincode || sender.pinCode || "",
         gst: consignorGSTIN || sender.gstin || "",
         state_name: consignorState || sender.state || "",
@@ -516,7 +516,7 @@ export const updateSaleVoucher = async (req, res) => {
       consigneeState: ewayConsigneeState,
       consigneePincode: ewayConsigneePincode,
       consigneeAddress: ewayConsigneeAddress,
-      distanceKM, 
+      distanceKM,
       vehicleNumber
     } = ewayBillDetails;
 
@@ -552,7 +552,7 @@ export const updateSaleVoucher = async (req, res) => {
         consignorName, consignorGSTIN, consignorState, consignorPincode, consignorAddress, consignorEmail,
         finalConsigneeName, finalConsigneeGSTIN, finalConsigneeState, finalConsigneePincode, finalConsigneeAddress,
         distanceKM,
-        vehicleNumber, 
+        vehicleNumber,
         paymentTerms, otherReferences, buyerOrderNo, buyerOrderDate || null, deliveryNoteDate || null, termsOfDelivery,
         dispatchDocNo || null, referenceNo || null, referenceDate || null,
         deliveryNoteNo || null, dispatchedThrough || null, destination || null,
@@ -902,7 +902,7 @@ export const bulkCreateSalesVoucher = async (req, res) => {
         consigneeState: ewayConsigneeState,
         consigneePincode: ewayConsigneePincode,
         consigneeAddress: ewayConsigneeAddress,
-        distanceKM, 
+        distanceKM,
         vehicleNumber
       } = ewayBillDetails;
 
@@ -929,7 +929,7 @@ export const bulkCreateSalesVoucher = async (req, res) => {
         sgst || 0,
         ewayBillNo || null,
         ewayBillDate || null,
-     
+
         consignorName || null,
         consignorGSTIN || null,
         consignorState || null,
@@ -941,11 +941,11 @@ export const bulkCreateSalesVoucher = async (req, res) => {
         finalConsigneeState || null,
         finalConsigneePincode || null,
         finalConsigneeAddress || null,
-      
+
         distanceKM || null,
-      
+
         vehicleNumber || null,
-     
+
         paymentTerms || null,
         otherReferences || null,
         buyerOrderNo || null,

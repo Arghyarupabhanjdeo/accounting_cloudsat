@@ -393,18 +393,18 @@ export const getStockSummary = async (req, res) => {
       const outwardsValue = parseFloat(s.totalValue) + parseFloat(d.totalValue);
 
       const closingQty = openingQty + inwardsQty - outwardsQty;
-      
+
       // Calculate closing value (simplified weighted average or just net value)
       // Standard: closing value = opening value + inwards value - outwards value
       let closingValue = openingValue + inwardsValue - outwardsValue;
       if (closingQty === 0) closingValue = 0; // handle negative or zero values if qty is 0
-      
+
       let closingRate = closingQty !== 0 ? closingValue / closingQty : 0;
-      
-      if(closingRate < 0 && closingQty > 0){
-          // Fallback if values become negative due to sales at higher prices
-          closingRate = openingRate || (p.totalQty > 0 ? p.totalValue / p.totalQty : 0);
-          closingValue = closingQty * closingRate;
+
+      if (closingRate < 0 && closingQty > 0) {
+        // Fallback if values become negative due to sales at higher prices
+        closingRate = openingRate || (p.totalQty > 0 ? p.totalValue / p.totalQty : 0);
+        closingValue = closingQty * closingRate;
       }
 
       return {
