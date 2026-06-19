@@ -1,10 +1,19 @@
 import pool from "../db.js";
-
+import { getCreatorFromRequest } from "../utils/creatorTracking.js";
 
 export const getProfitLoss = async (req, res) => {
   const { companyId } = req.params;
   const qFrom = req.query.from;
   const qTo = req.query.to;
+
+  const creator = getCreatorFromRequest(req);
+  let extraCondition = "";
+  let extraParams = [];
+
+  if (creator.employeeId) {
+    extraCondition = " AND created_by_employee_id = ?";
+    extraParams.push(creator.employeeId);
+  }
 
   // default period
   const today = new Date();
@@ -59,9 +68,8 @@ export const getProfitLoss = async (req, res) => {
        FROM payment_voucher_entries pve
        JOIN payment_vouchers pv ON pv.id = pve.voucherId
        WHERE pv.companyId = ? AND pv.date BETWEEN ? AND ?
-         AND pve.ledger IN (?)
-       GROUP BY pve.ledger`,
-      [companyId, fromSQL, toSQL, inClause]
+         AND pve.ledger IN (?)` + extraCondition.replace(/created_by/g, 'pv.created_by'),
+      [companyId, fromSQL, toSQL, inClause, ...extraParams]
     );
 
     // Journal
@@ -72,9 +80,8 @@ export const getProfitLoss = async (req, res) => {
        FROM journal_transactions jt
        JOIN journal_vouchers jv ON jv.id = jt.voucherId
        WHERE jv.companyId = ? AND jv.date BETWEEN ? AND ?
-         AND jt.particulars IN (?)
-       GROUP BY jt.particulars`,
-      [companyId, fromSQL, toSQL, inClause]
+         AND jt.particulars IN (?)` + extraCondition.replace(/created_by/g, 'jv.created_by'),
+      [companyId, fromSQL, toSQL, inClause, ...extraParams]
     );
 
     // Contra
@@ -83,9 +90,8 @@ export const getProfitLoss = async (req, res) => {
        FROM contra_transactions ct
        JOIN contra_vouchers cv ON cv.id = ct.voucherId
        WHERE cv.companyId = ? AND cv.date BETWEEN ? AND ?
-         AND ct.fromAccount IN (?)
-       GROUP BY ct.fromAccount`,
-      [companyId, fromSQL, toSQL, inClause]
+         AND ct.fromAccount IN (?)` + extraCondition.replace(/created_by/g, 'cv.created_by'),
+      [companyId, fromSQL, toSQL, inClause, ...extraParams]
     );
 
     const [contraTo] = await pool.query(
@@ -93,9 +99,8 @@ export const getProfitLoss = async (req, res) => {
        FROM contra_transactions ct
        JOIN contra_vouchers cv ON cv.id = ct.voucherId
        WHERE cv.companyId = ? AND cv.date BETWEEN ? AND ?
-         AND ct.toAccount IN (?)
-       GROUP BY ct.toAccount`,
-      [companyId, fromSQL, toSQL, inClause]
+         AND ct.toAccount IN (?)` + extraCondition.replace(/created_by/g, 'cv.created_by'),
+      [companyId, fromSQL, toSQL, inClause, ...extraParams]
     );
 
     // 5) Sales vouchers: Use SUBTOTAL (Taxable Value) - Credit Side
@@ -103,9 +108,8 @@ export const getProfitLoss = async (req, res) => {
       `SELECT sv.ledgerId AS ledgerId, SUM(COALESCE(sv.subtotal,0)) AS credit_sum
        FROM sales_vouchers sv
        WHERE sv.companyId = ? AND sv.date BETWEEN ? AND ?
-         AND sv.ledgerId IN (?)
-       GROUP BY sv.ledgerId`,
-      [companyId, fromSQL, toSQL, inClause]
+         AND sv.ledgerId IN (?)` + extraCondition.replace(/created_by/g, 'sv.created_by'),
+      [companyId, fromSQL, toSQL, inClause, ...extraParams]
     );
 
     // 6) Purchase vouchers: Use SUBTOTAL (Taxable Value) - Debit Side
@@ -113,42 +117,30 @@ export const getProfitLoss = async (req, res) => {
       `SELECT pv.ledgerId AS ledgerId, SUM(COALESCE(pv.subtotal,0)) AS debit_sum
        FROM purchase_vouchers pv
        WHERE pv.companyId = ? AND pv.date BETWEEN ? AND ?
-         AND pv.ledgerId IN (?)
-       GROUP BY pv.ledgerId`,
-      [companyId, fromSQL, toSQL, inClause]
+         AND pv.ledgerId IN (?)` + extraCondition.replace(/created_by/g, 'pv.created_by'),
+      [companyId, fromSQL, toSQL, inClause, ...extraParams]
     );
 
     // 7) Debit Notes (Purchase Returns) -> Reduce Purchase (Reduce Debit or Add Credit)
-    // We treat as Credit to the separate Expense Ledger or the same Ledger.
-    // Usually Debit Note to Party -> Party Debit, Expense Credit.
-    // We need to fetch the SUM from note_items because notes table might miss Amount.
-    // However, here we need to know WHICH ledger is credited (Purchase Account).
-    // The note table has PurchaseLedger column.
     const [debitNoteAgg] = await pool.query(
       `SELECT n.PurchaseLedger AS ledgerId, SUM(ni.amount) AS credit_sum
          FROM notes n
          JOIN note_items ni ON n.id = ni.noteId
          WHERE n.companyId = ? AND n.date BETWEEN ? AND ? 
            AND n.note_type = 'debit'
-           AND n.PurchaseLedger IN (?)
-         GROUP BY n.PurchaseLedger`,
-      [companyId, fromSQL, toSQL, inClause]
+           AND n.PurchaseLedger IN (?)` + extraCondition.replace(/created_by/g, 'n.created_by'),
+      [companyId, fromSQL, toSQL, inClause, ...extraParams]
     );
 
     // 8) Credit Notes (Sales Returns) -> Reduce Sales (Reduce Credit or Add Debit)
-    // Usually Credit Note to Party -> Party Credit, Income Debit.
-    // Using PurchaseLedger column (which seems to store the Sales/Income ledger based on createCreditNote usage or assumptions).
-    // We check createCreditNote: it puts PurchaseLedger as 5th arg. 
-    // We assume n.PurchaseLedger holds the "Sales Account" or "Income Account" ledger ID.
     const [creditNoteAgg] = await pool.query(
       `SELECT n.PurchaseLedger AS ledgerId, SUM(ni.amount) AS debit_sum
          FROM notes n
          JOIN note_items ni ON n.id = ni.noteId
          WHERE n.companyId = ? AND n.date BETWEEN ? AND ? 
            AND n.note_type = 'credit'
-           AND n.PurchaseLedger IN (?)
-         GROUP BY n.PurchaseLedger`,
-      [companyId, fromSQL, toSQL, inClause]
+           AND n.PurchaseLedger IN (?)` + extraCondition.replace(/created_by/g, 'n.created_by'),
+      [companyId, fromSQL, toSQL, inClause, ...extraParams]
     );
 
 
@@ -275,8 +267,8 @@ export const getProfitLoss = async (req, res) => {
 
     // Closing Stock
     const [stocks] = await pool.query(
-      `SELECT SUM(openingBalanceQty * openingBalanceRate) as stockValue FROM stocks WHERE companyId = ?`,
-      [companyId]
+      `SELECT SUM(openingBalanceQty * openingBalanceRate) as stockValue FROM stocks WHERE companyId = ?` + extraCondition.replace(/created_by/g, 'created_by'),
+      [companyId, ...extraParams]
     );
     const closingStockValue = Number(stocks[0]?.stockValue || 0);
 

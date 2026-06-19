@@ -39,6 +39,39 @@ const normalizePaymentAccountType = (value) => {
   return `bank_${account}`;
 };
 
+const updateAccountBalance = async (connOrPool, accountId, companyId, amount, isAddition) => {
+  if (!accountId) return;
+  const numericAmount = parseFloat(amount) || 0;
+  const factor = isAddition ? 1 : -1;
+  const change = numericAmount * factor;
+
+  if (accountId === "cash") {
+    await connOrPool.query(
+      `UPDATE ledgers 
+       SET closingBalance = closingBalance + ?
+       WHERE name = 'Cash' AND companyId = ?`,
+      [change, companyId]
+    );
+  } else if (typeof accountId === "string" && accountId.startsWith("bank_")) {
+    const bankId = parseInt(accountId.split("_")[1], 10);
+    if (!isNaN(bankId)) {
+      await connOrPool.query(
+        `UPDATE bank_accounts 
+         SET currentBalance = currentBalance + ?
+         WHERE id = ? AND companyId = ?`,
+        [change, bankId, companyId]
+      );
+    }
+  } else {
+    await connOrPool.query(
+      `UPDATE ledgers 
+       SET closingBalance = closingBalance + ?
+       WHERE id = ? AND companyId = ?`,
+      [change, accountId, companyId]
+    );
+  }
+};
+
 // export const createPaymentVoucher = async (req, res) => {
 //   const { companyId } = req.params;
 //   const { voucherNo, date, narration, accountType, items, totalAmount } = req.body;
@@ -165,6 +198,10 @@ export const createPaymentVoucher = async (req, res) => {
         `,
         [amount, ledgerId, companyId]
       );
+
+      // 3️⃣ Update Cash/Bank account balance
+      const normalizedAccountType = normalizePaymentAccountType(accountType);
+      await updateAccountBalance(conn, normalizedAccountType, companyId, amount, false);
     }
     await conn.query(
       `UPDATE payment_vouchers SET created_by_user_id = ?, created_by_employee_id = ? WHERE companyId = ? AND voucherNo = ?`,
@@ -304,7 +341,7 @@ export const deletePaymentVoucher = async (req, res) => {
 
     if (voucherNo && voucherNo.trim() !== "") {
       const [entries] = await conn.query(
-        `SELECT ledgerId, amount FROM payment_vouchers WHERE voucherNo = ? AND companyId = ?`,
+        `SELECT ledgerId, amount, accountType FROM payment_vouchers WHERE voucherNo = ? AND companyId = ?`,
         [voucherNo, companyId]
       );
 
@@ -314,6 +351,10 @@ export const deletePaymentVoucher = async (req, res) => {
             `UPDATE ledgers SET closingBalance = closingBalance + ? WHERE id = ? AND companyId = ?`,
             [entry.amount, entry.ledgerId, companyId]
           );
+        }
+        if (entry.accountType && entry.amount) {
+          const normalizedOldAccountType = normalizePaymentAccountType(entry.accountType);
+          await updateAccountBalance(conn, normalizedOldAccountType, companyId, entry.amount, true);
         }
       }
 
@@ -327,6 +368,10 @@ export const deletePaymentVoucher = async (req, res) => {
           `UPDATE ledgers SET closingBalance = closingBalance + ? WHERE id = ? AND companyId = ?`,
           [voucher.amount, voucher.ledgerId, companyId]
         );
+      }
+      if (voucher.accountType && voucher.amount) {
+        const normalizedOldAccountType = normalizePaymentAccountType(voucher.accountType);
+        await updateAccountBalance(conn, normalizedOldAccountType, companyId, voucher.amount, true);
       }
       await conn.query(
         `DELETE FROM payment_vouchers WHERE id = ?`,
@@ -369,7 +414,7 @@ export const bulkDeletePaymentVouchers = async (req, res) => {
 
       if (voucherNo && voucherNo.trim() !== "") {
         const [entries] = await conn.query(
-          `SELECT ledgerId, amount FROM payment_vouchers WHERE voucherNo = ? AND companyId = ?`,
+          `SELECT ledgerId, amount, accountType FROM payment_vouchers WHERE voucherNo = ? AND companyId = ?`,
           [voucherNo, companyId]
         );
 
@@ -379,6 +424,10 @@ export const bulkDeletePaymentVouchers = async (req, res) => {
               `UPDATE ledgers SET closingBalance = closingBalance + ? WHERE id = ? AND companyId = ?`,
               [entry.amount, entry.ledgerId, companyId]
             );
+          }
+          if (entry.accountType && entry.amount) {
+            const normalizedOldAccountType = normalizePaymentAccountType(entry.accountType);
+            await updateAccountBalance(conn, normalizedOldAccountType, companyId, entry.amount, true);
           }
         }
 
@@ -392,6 +441,10 @@ export const bulkDeletePaymentVouchers = async (req, res) => {
             `UPDATE ledgers SET closingBalance = closingBalance + ? WHERE id = ? AND companyId = ?`,
             [voucher.amount, voucher.ledgerId, companyId]
           );
+        }
+        if (voucher.accountType && voucher.amount) {
+          const normalizedOldAccountType = normalizePaymentAccountType(voucher.accountType);
+          await updateAccountBalance(conn, normalizedOldAccountType, companyId, voucher.amount, true);
         }
         await conn.query(
           `DELETE FROM payment_vouchers WHERE id = ?`,
@@ -454,7 +507,7 @@ export const updatePaymentVoucher = async (req, res) => {
     const activeCompanyId = oldVoucher.companyId || companyId;
 
     const [oldEntries] = await conn.query(
-      `SELECT ledgerId, amount FROM payment_vouchers WHERE voucherNo = ? AND companyId = ?`,
+      `SELECT ledgerId, amount, accountType FROM payment_vouchers WHERE voucherNo = ? AND companyId = ?`,
       [oldVoucherNo, activeCompanyId]
     );
 
@@ -464,6 +517,10 @@ export const updatePaymentVoucher = async (req, res) => {
           `UPDATE ledgers SET closingBalance = closingBalance + ? WHERE id = ? AND companyId = ?`,
           [entry.amount, entry.ledgerId, activeCompanyId]
         );
+      }
+      if (entry.accountType && entry.amount) {
+        const normalizedOldAccountType = normalizePaymentAccountType(entry.accountType);
+        await updateAccountBalance(conn, normalizedOldAccountType, activeCompanyId, entry.amount, true);
       }
     }
 
@@ -501,6 +558,10 @@ export const updatePaymentVoucher = async (req, res) => {
         `,
         [amount, ledgerId, activeCompanyId]
       );
+
+      // Update Cash/Bank account balance
+      const normalizedAccountType = normalizePaymentAccountType(accountType);
+      await updateAccountBalance(conn, normalizedAccountType, activeCompanyId, amount, false);
     }
 
     await conn.commit();
@@ -604,6 +665,10 @@ export const bulkCreatePaymentVoucher = async (req, res) => {
           `,
           [amount, ledgerId, companyId]
         );
+
+        // Update Cash/Bank account balance
+        const normalizedAccountType = normalizePaymentAccountType(accountType);
+        await updateAccountBalance(conn, normalizedAccountType, companyId, amount, false);
       }
     }
 

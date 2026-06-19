@@ -45,6 +45,39 @@ const normalizeReceiptAccountId = (value) => {
   return `bank_${account}`;
 };
 
+const updateAccountBalance = async (connOrPool, accountId, companyId, amount, isAddition) => {
+  if (!accountId) return;
+  const numericAmount = parseFloat(amount) || 0;
+  const factor = isAddition ? 1 : -1;
+  const change = numericAmount * factor;
+
+  if (accountId === "cash") {
+    await connOrPool.query(
+      `UPDATE ledgers 
+       SET closingBalance = closingBalance + ?
+       WHERE name = 'Cash' AND companyId = ?`,
+      [change, companyId]
+    );
+  } else if (typeof accountId === "string" && accountId.startsWith("bank_")) {
+    const bankId = parseInt(accountId.split("_")[1], 10);
+    if (!isNaN(bankId)) {
+      await connOrPool.query(
+        `UPDATE bank_accounts 
+         SET currentBalance = currentBalance + ?
+         WHERE id = ? AND companyId = ?`,
+        [change, bankId, companyId]
+      );
+    }
+  } else {
+    await connOrPool.query(
+      `UPDATE ledgers 
+       SET closingBalance = closingBalance + ?
+       WHERE id = ? AND companyId = ?`,
+      [change, accountId, companyId]
+    );
+  }
+};
+
 export const createReceiveVoucher = async (req, res) => {
   const { companyId } = req.params;
   const creator = getCreatorFromRequest(req);
@@ -86,6 +119,10 @@ export const createReceiveVoucher = async (req, res) => {
         `UPDATE ledgers SET closingBalance = COALESCE(closingBalance, 0) + ? WHERE id = ? AND companyId = ?`,
         [amount, ledgerId, companyId]
       );
+
+      // Update Cash/Bank account balance (adding money)
+      const normalizedReceiptAccountId = normalizeReceiptAccountId(receiptAccountId);
+      await updateAccountBalance(pool, normalizedReceiptAccountId, companyId, amount, true);
     }
 
     let pdfPath = "";
@@ -223,6 +260,10 @@ export const bulkCreateReceiveVoucher = async (req, res) => {
           `,
           [amount, ledgerId, companyId] 
         );
+
+        // Update Cash/Bank account balance (adding money)
+        const normalizedReceiptAccountId = normalizeReceiptAccountId(receiptAccountId);
+        await updateAccountBalance(conn, normalizedReceiptAccountId, companyId, amount, true);
       }
     }
 
@@ -341,6 +382,11 @@ export const deleteReceiveVoucher = async (req, res) => {
           }
         }
 
+        if (row.receiptAccountId && amount) {
+          const normalizedOldAccountId = normalizeReceiptAccountId(row.receiptAccountId);
+          await updateAccountBalance(conn, normalizedOldAccountId, companyId, amount, false);
+        }
+
         await conn.query(
           `DELETE FROM receive_vouchers WHERE id = ?`,
           [voucherId]
@@ -375,6 +421,11 @@ export const deleteReceiveVoucher = async (req, res) => {
             [amount, ledgerId, companyId]
           );
         }
+      }
+
+      if (row.receiptAccountId && amount) {
+        const normalizedOldAccountId = normalizeReceiptAccountId(row.receiptAccountId);
+        await updateAccountBalance(conn, normalizedOldAccountId, companyId, amount, false);
       }
     }
 
@@ -467,6 +518,11 @@ export const updateReceiveVoucher = async (req, res) => {
           );
         }
       }
+
+      if (oldRow.receiptAccountId && amount) {
+        const normalizedOldAccountId = normalizeReceiptAccountId(oldRow.receiptAccountId);
+        await updateAccountBalance(conn, normalizedOldAccountId, activeCompanyId, amount, false);
+      }
     }
 
     // 2️⃣ Delete old entries
@@ -532,6 +588,10 @@ export const updateReceiveVoucher = async (req, res) => {
           [amount, ledgerId, activeCompanyId]
         );
       }
+
+      // Update Cash/Bank balance (adding money)
+      const normalizedReceiptAccountId = normalizeReceiptAccountId(receiptAccountId);
+      await updateAccountBalance(conn, normalizedReceiptAccountId, activeCompanyId, amount, true);
     }
 
     await conn.commit();

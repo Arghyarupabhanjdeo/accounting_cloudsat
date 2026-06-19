@@ -702,19 +702,30 @@ export const updateSaleVoucher = async (req, res) => {
 
 export const getSaleVoucher = async (req, res) => {
   const { companyId } = req.params;
+  const creator = getCreatorFromRequest(req);
 
   try {
-    const [rows] = await pool.query(
-      `SELECT sales_vouchers.*, 
+    let query = `SELECT sales_vouchers.*, 
               DATE_FORMAT(sales_vouchers.date, '%Y-%m-%d') AS date,
               creator_user.name AS creator_name,
               emp_user.name AS employee_name
        FROM sales_vouchers
        LEFT JOIN users AS creator_user ON sales_vouchers.created_by_user_id = creator_user.id
        LEFT JOIN users AS emp_user ON sales_vouchers.created_by_employee_id = emp_user.employee_id
-       WHERE sales_vouchers.companyId = ?`,
-      [companyId]
-    );
+       WHERE sales_vouchers.companyId = ?`;
+    const params = [companyId];
+
+    if (creator.employeeId) {
+      query += ` AND sales_vouchers.created_by_employee_id = ?`;
+      params.push(creator.employeeId);
+    } else if (creator.userId) {
+      query += ` AND sales_vouchers.created_by_user_id = ? AND (sales_vouchers.created_by_employee_id IS NULL OR sales_vouchers.created_by_employee_id = 0)`;
+      params.push(creator.userId);
+    }
+
+    query += ` ORDER BY sales_vouchers.id DESC`;
+
+    const [rows] = await pool.query(query, params);
     console.log("data is =>", rows);
 
     if (rows.length === 0) {

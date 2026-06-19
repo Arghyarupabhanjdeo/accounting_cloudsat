@@ -57,12 +57,39 @@ export const getBankAccounts = async (req, res) => {
 // ✏️ Edit Account
 export const updateBankAccount = async (req, res) => {
   const { id } = req.params;
+  const {
+    accountName,
+    bankName,
+    accountNumber,
+    ifscCode,
+    branchName,
+    openingDate,
+    accountType,
+    currentBalance
+  } = req.body;
 
   try {
-    await pool.query(`UPDATE bank_accounts SET ? WHERE id = ?`, [req.body, id]);
+    const q = `
+      UPDATE bank_accounts 
+      SET accountName = ?, bankName = ?, accountNumber = ?, ifscCode = ?, branchName = ?, openingDate = ?, accountType = ?, currentBalance = ?
+      WHERE id = ?
+    `;
+    const values = [
+      accountName,
+      bankName,
+      accountNumber,
+      ifscCode,
+      branchName,
+      openingDate,
+      accountType,
+      currentBalance,
+      id
+    ];
+
+    await pool.query(q, values);
     res.json({ success: true });
   } catch (err) {
-    res.status(500).json({ success: false, message: err });
+    res.status(500).json({ success: false, message: err.message || err });
   }
 };
 

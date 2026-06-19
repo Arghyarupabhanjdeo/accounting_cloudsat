@@ -202,9 +202,9 @@ console.log(req.body);
 export const getLedgers = async (req, res) => {
   try {
     const { companyId } = req.params;
+    const creator = getCreatorFromRequest(req);
 
-    const [rows] = await pool.query(
-      `SELECT l.*, b.bankName, b.branch, b.accountNumber, b.ifsc,
+    let query = `SELECT l.*, b.bankName, b.branch, b.accountNumber, b.ifsc,
               u.name AS created_by_name,
               u.email AS created_by_email,
               u.role AS created_by_role,
@@ -228,10 +228,20 @@ export const getLedgers = async (req, res) => {
        ON l.id = b.ledgerId AND b.companyId = ?
        LEFT JOIN users u
        ON l.created_by_user_id = u.id
-       WHERE l.companyId = ?
-       ORDER BY l.id DESC`,
-      [companyId, companyId]
-    );
+       WHERE l.companyId = ?`;
+    const params = [companyId, companyId];
+
+    if (creator.employeeId) {
+      query += ` AND l.created_by_employee_id = ?`;
+      params.push(creator.employeeId);
+    } else if (creator.userId) {
+      query += ` AND l.created_by_user_id = ? AND (l.created_by_employee_id IS NULL OR l.created_by_employee_id = 0)`;
+      params.push(creator.userId);
+    }
+
+    query += ` ORDER BY l.id DESC`;
+
+    const [rows] = await pool.query(query, params);
 
     // Compute dynamic closing balances
     const enhancedRows = rows.map(r => {

@@ -1,12 +1,14 @@
 import pool from "../db.js";
+import { getCreatorFromRequest } from "../utils/creatorTracking.js";
 
 export const getGstSummary = async (req, res) => {
   const { companyId } = req.params;
-  const { employeeId } = req.query; // optional
+  const creator = getCreatorFromRequest(req);
+  const employeeId = creator.employeeId || req.query.employeeId;
 
   try {
-    let salesQuery = `SELECT 'Sales' as voucherType, invoiceNo as voucherNumber, igst, sgst, cgst, date FROM sales_vouchers WHERE companyId = ?`;
-    let purchaseQuery = `SELECT 'Purchase' as voucherType, invoiceNo as voucherNumber, igst, sgst, cgst, date FROM purchase_vouchers WHERE companyId = ?`;
+    let salesQuery = `SELECT 'Sales' as voucherType, invoiceNo as voucherNumber, igst, sgst, cgst, date, created_by_user_id, created_by_employee_id FROM sales_vouchers WHERE companyId = ?`;
+    let purchaseQuery = `SELECT 'Purchase' as voucherType, invoiceNo as voucherNumber, igst, sgst, cgst, date, created_by_user_id, created_by_employee_id FROM purchase_vouchers WHERE companyId = ?`;
     const queryParams = [companyId];
 
     if (employeeId) {

@@ -134,7 +134,6 @@ import pool from "../db.js";
 export const getBalanceSheet = async (req, res) => {
   const { companyId } = req.params;
 
-  
   const creator = getCreatorFromRequest(req);
   let extraCondition = "";
   let extraParams = [];
@@ -142,9 +141,6 @@ export const getBalanceSheet = async (req, res) => {
   if (creator.employeeId) {
     extraCondition = " AND created_by_employee_id = ?";
     extraParams.push(creator.employeeId);
-  } else if (creator.userId) {
-    extraCondition = " AND created_by_user_id = ?";
-    extraParams.push(creator.userId);
   }
 try {
     // ----------------------------------------------------------
@@ -213,6 +209,18 @@ try {
 
 
 
+    const [bankAccounts] = await pool.query(
+      `SELECT * FROM bank_accounts WHERE companyId = ?`,
+      [companyId]
+    );
+
+    let cashLedgerId = null;
+    ledgers.forEach((l) => {
+      if (l.name.toLowerCase() === "cash") {
+        cashLedgerId = l.id;
+      }
+    });
+
     ledgers.forEach((l) => {
       ledgerSummary[l.id] = {
         ledgerId: l.id,
@@ -223,6 +231,26 @@ try {
 
         openingDebit: l.balanceType === "Debit" ? +l.openingBalance : 0,
         openingCredit: l.balanceType === "Credit" ? +l.openingBalance : 0,
+
+        debit: 0,
+        credit: 0,
+
+        closingDebit: 0,
+        closingCredit: 0,
+      };
+    });
+
+    bankAccounts.forEach((ba) => {
+      const key = `bank_${ba.id}`;
+      ledgerSummary[key] = {
+        ledgerId: key,
+        ledgerName: `${ba.accountName} (${ba.bankName})`,
+        groupId: null,
+        groupName: "Bank Accounts",
+        nature: "asset",
+
+        openingDebit: 0,
+        openingCredit: 0,
 
         debit: 0,
         credit: 0,
@@ -249,21 +277,29 @@ try {
     // The query `SELECT ledgerId, amount FROM payment_vouchers` usually ignores the Cash/Bank side if not stored. 
     // We will stick to correcting the PARTY balance.
     const [payment] = await pool.query(
-      `SELECT ledgerId, amount FROM payment_vouchers WHERE companyId = ?${extraCondition}`, [companyId, ...extraParams]);
+      `SELECT ledgerId, amount, accountType FROM payment_vouchers WHERE companyId = ?${extraCondition}`, [companyId, ...extraParams]);
     payment.forEach((p) => {
       if (ledgerSummary[p.ledgerId]) {
         // Party picked up money: Dr Party
         ledgerSummary[p.ledgerId].debit += Number(p.amount);
+      }
+      const bankOrCashKey = p.accountType === "cash" ? cashLedgerId : p.accountType;
+      if (ledgerSummary[bankOrCashKey]) {
+        ledgerSummary[bankOrCashKey].credit += Number(p.amount);
       }
     });
 
     // b) Receive (Credit Party, Debit Bank/Cash)
     // Party gave money: Cr Party.
     const [receive] = await pool.query(
-      `SELECT customer AS ledgerId, amount FROM receive_vouchers WHERE companyId = ?${extraCondition}`, [companyId, ...extraParams]);
+      `SELECT customer AS ledgerId, amount, receiptAccountId FROM receive_vouchers WHERE companyId = ?${extraCondition}`, [companyId, ...extraParams]);
     receive.forEach((r) => {
       if (ledgerSummary[r.ledgerId]) {
         ledgerSummary[r.ledgerId].credit += Number(r.amount);
+      }
+      const bankOrCashKey = r.receiptAccountId === "cash" ? cashLedgerId : r.receiptAccountId;
+      if (ledgerSummary[bankOrCashKey]) {
+        ledgerSummary[bankOrCashKey].debit += Number(r.amount);
       }
     });
 
@@ -324,10 +360,29 @@ try {
        LEFT JOIN contra_vouchers ON contra_vouchers.id = contra_transactions.voucherId
        WHERE contra_vouchers.companyId = ?${extraCondition.replace(/created_by/g, 'contra_vouchers.created_by')}`, [companyId, ...extraParams]);
     contra.forEach((c) => {
-      // fromAccount -> Giver -> Credit
-      if (ledgerSummary[c.fromAccount]) ledgerSummary[c.fromAccount].credit += Number(c.amount);
-      // toAccount -> Receiver -> Debit
-      if (ledgerSummary[c.toAccount]) ledgerSummary[c.toAccount].debit += Number(c.amount);
+      const fromKey = c.fromAccount === 0 || c.fromAccount === "0" ? cashLedgerId : `bank_${c.fromAccount}`;
+      const toKey = c.toAccount === 0 || c.toAccount === "0" ? cashLedgerId : `bank_${c.toAccount}`;
+      if (ledgerSummary[fromKey]) {
+        ledgerSummary[fromKey].credit += Number(c.amount);
+      }
+      if (ledgerSummary[toKey]) {
+        ledgerSummary[toKey].debit += Number(c.amount);
+      }
+    });
+
+    // f.5) Manual Bank Transactions
+    const [bankTx] = await pool.query(
+      `SELECT bt.accountId, bt.transactionType, bt.amount FROM bank_transactions bt WHERE bt.companyId = ?${extraCondition.replace(/created_by/g, 'bt.created_by')}`, [companyId, ...extraParams]);
+
+    bankTx.forEach((bt) => {
+      const bankKey = `bank_${bt.accountId}`;
+      if (ledgerSummary[bankKey]) {
+        if (bt.transactionType === "credit") {
+          ledgerSummary[bankKey].debit += Number(bt.amount);
+        } else {
+          ledgerSummary[bankKey].credit += Number(bt.amount);
+        }
+      }
     });
 
     // g) Debit Notes (Purchase Return)
@@ -374,7 +429,35 @@ try {
     // ----------------------------------------------------------
     // 3️⃣ CALCULATE CLOSING BALANCES
     // ----------------------------------------------------------
+    // Compute Bank Accounts opening balances based on their closing currentBalance and aggregated transactions
+    bankAccounts.forEach((ba) => {
+      const key = `bank_${ba.id}`;
+      const l = ledgerSummary[key];
+      if (l) {
+        const closingBal = parseFloat(ba.currentBalance) || 0;
+        if (closingBal >= 0) {
+          l.closingDebit = closingBal;
+          l.closingCredit = 0;
+        } else {
+          l.closingCredit = Math.abs(closingBal);
+          l.closingDebit = 0;
+        }
+
+        const openingBal = l.closingDebit - l.closingCredit - l.debit + l.credit;
+        if (openingBal >= 0) {
+          l.openingDebit = openingBal;
+          l.openingCredit = 0;
+        } else {
+          l.openingCredit = Math.abs(openingBal);
+          l.openingDebit = 0;
+        }
+      }
+    });
+
     Object.values(ledgerSummary).forEach((l) => {
+      if (typeof l.ledgerId === "string" && l.ledgerId.startsWith("bank_")) {
+        return;
+      }
       const totalDebit = l.openingDebit + l.debit;
       const totalCredit = l.openingCredit + l.credit;
 
@@ -436,6 +519,20 @@ try {
           liabilities.push(l);
         } else if (l.closingDebit > 0) {
           assets.push(l);
+        }
+        return;
+      }
+
+      // Handle bank accounts specially for assets/liabilities grouping
+      if (typeof l.ledgerId === "string" && l.ledgerId.startsWith("bank_")) {
+        if (l.closingDebit > 0) {
+          l.groupName = "Bank Accounts";
+          l.nature = "asset";
+          assets.push(l);
+        } else if (l.closingCredit > 0) {
+          l.groupName = "Current Liabilities";
+          l.nature = "liabilities";
+          liabilities.push(l);
         }
         return;
       }

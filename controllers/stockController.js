@@ -89,16 +89,27 @@ export const createStockList = async (req, res) => {
 
 export const getStocks = async (req, res) => {
   const { companyId } = req.params;
+  const creator = getCreatorFromRequest(req);
 
   if (!companyId) {
     return res.status(400).json({ message: "Missing CompanyId" });
   }
 
   try {
-    const [rows] = await pool.query(
-      `SELECT * FROM stocks WHERE companyId = ? and isdeleted = 0 ORDER BY id DESC`,
-      [companyId]
-    );
+    let query = `SELECT * FROM stocks WHERE companyId = ? AND isdeleted = 0`;
+    const params = [companyId];
+
+    if (creator.employeeId) {
+      query += ` AND created_by_employee_id = ?`;
+      params.push(creator.employeeId);
+    } else if (creator.userId) {
+      query += ` AND created_by_user_id = ? AND (created_by_employee_id IS NULL OR created_by_employee_id = 0)`;
+      params.push(creator.userId);
+    }
+
+    query += ` ORDER BY id DESC`;
+
+    const [rows] = await pool.query(query, params);
 
     res.status(200).json({
       message: "Data fetched successfully",
@@ -245,16 +256,27 @@ export const deleteStock = async (req, res) => {
 
 export const getAllStockNames = async (req, res) => {
   const { companyId } = req.params;
+  const creator = getCreatorFromRequest(req);
 
   if (!companyId) {
     return res.status(400).json({ message: "Missing CompanyId" });
   }
 
   try {
-    const [rows] = await pool.query(
-      `SELECT id, name FROM stocks WHERE companyId = ? AND isdeleted = 0 ORDER BY name ASC`,
-      [companyId]
-    );
+    let query = `SELECT id, name FROM stocks WHERE companyId = ? AND isdeleted = 0`;
+    const params = [companyId];
+
+    if (creator.employeeId) {
+      query += ` AND created_by_employee_id = ?`;
+      params.push(creator.employeeId);
+    } else if (creator.userId) {
+      query += ` AND created_by_user_id = ? AND (created_by_employee_id IS NULL OR created_by_employee_id = 0)`;
+      params.push(creator.userId);
+    }
+
+    query += ` ORDER BY name ASC`;
+
+    const [rows] = await pool.query(query, params);
 
     res.status(200).json({
       message: "Stock names fetched successfully",
@@ -271,16 +293,27 @@ export const getAllStockNames = async (req, res) => {
 
 export const getAllHSN = async (req, res) => {
   const { companyId } = req.params;
+  const creator = getCreatorFromRequest(req);
 
   if (!companyId) {
     return res.status(400).json({ message: "Missing CompanyId" });
   }
 
   try {
-    const [rows] = await pool.query(
-      `SELECT id, hsn FROM stocks WHERE companyId = ? AND isdeleted = 0 AND hsn IS NOT NULL AND hsn != '' ORDER BY hsn ASC`,
-      [companyId]
-    );
+    let query = `SELECT id, hsn FROM stocks WHERE companyId = ? AND isdeleted = 0 AND hsn IS NOT NULL AND hsn != ''`;
+    const params = [companyId];
+
+    if (creator.employeeId) {
+      query += ` AND created_by_employee_id = ?`;
+      params.push(creator.employeeId);
+    } else if (creator.userId) {
+      query += ` AND created_by_user_id = ? AND (created_by_employee_id IS NULL OR created_by_employee_id = 0)`;
+      params.push(creator.userId);
+    }
+
+    query += ` ORDER BY hsn ASC`;
+
+    const [rows] = await pool.query(query, params);
 
     res.status(200).json({
       message: "HSN data fetched successfully",
@@ -313,16 +346,24 @@ export const getStockSummary = async (req, res) => {
     extraCondition = " AND created_by_employee_id = ?";
     extraParams.push(creator.employeeId);
   } else if (creator.userId) {
-    extraCondition = " AND created_by_user_id = ?";
+    extraCondition = " AND created_by_user_id = ? AND (created_by_employee_id IS NULL OR created_by_employee_id = 0)";
     extraParams.push(creator.userId);
   }
 
   try {
-    // We get all stocks for the company
-    const [stocks] = await pool.query(
-      `SELECT * FROM stocks WHERE companyId = ? and isdeleted = 0`,
-      [companyId]
-    );
+    // We get all stocks for the company, filtered by creator
+    let stockQuery = `SELECT * FROM stocks WHERE companyId = ? AND isdeleted = 0`;
+    const stockParams = [companyId];
+
+    if (creator.employeeId) {
+      stockQuery += ` AND created_by_employee_id = ?`;
+      stockParams.push(creator.employeeId);
+    } else if (creator.userId) {
+      stockQuery += ` AND created_by_user_id = ? AND (created_by_employee_id IS NULL OR created_by_employee_id = 0)`;
+      stockParams.push(creator.userId);
+    }
+
+    const [stocks] = await pool.query(stockQuery, stockParams);
 
     // Get Purchases
     const [purchases] = await pool.query(

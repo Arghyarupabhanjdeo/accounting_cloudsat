@@ -57,6 +57,8 @@ export const getTransactions = async (req, res) => {
 
   try {
     const bankIdStr = `bank_${accountId}`;
+    const numericAccountId = parseInt(accountId, 10);
+
     const [rows] = await pool.query(
       `SELECT 
         id, 
@@ -70,21 +72,81 @@ export const getTransactions = async (req, res) => {
         'manual' AS source
        FROM bank_transactions 
        WHERE accountId = ?
+       
        UNION ALL
+       
        SELECT 
         id, 
         date, 
-        CONCAT(voucherType, ' Voucher: ', IFNULL(narration, '')) AS description, 
-        CASE WHEN debit > 0 THEN 'credit' ELSE 'debit' END AS transactionType, 
-        CASE WHEN debit > 0 THEN debit ELSE credit END AS amount, 
-        voucherType AS category, 
+        CONCAT('Payment Voucher: ', IFNULL(narration, '')) AS description, 
+        'debit' AS transactionType, 
+        amount, 
+        'Payment' AS category, 
+        voucherNo AS referenceNumber, 
+        0 AS balanceAfter,
+        'voucher' AS source
+       FROM payment_vouchers 
+       WHERE accountType = ? OR accountType = ?
+       
+       UNION ALL
+       
+       SELECT 
+        id, 
+        date, 
+        CONCAT('Receipt Voucher: ', IFNULL(narration, '')) AS description, 
+        'credit' AS transactionType, 
+        amount, 
+        'Receipt' AS category, 
         voucherId AS referenceNumber, 
         0 AS balanceAfter,
         'voucher' AS source
-       FROM voucher_transactions 
-       WHERE ledgerId = ?
+       FROM receive_vouchers 
+       WHERE receiptAccountId = ? OR receiptAccountId = ?
+
+       UNION ALL
+
+       SELECT 
+        ct.id,
+        cv.date,
+        CONCAT('Contra Voucher (To Cash/Bank): ', IFNULL(ct.narration, IFNULL(cv.narration, ''))) AS description,
+        'debit' AS transactionType,
+        ct.amount,
+        'Contra' AS category,
+        cv.voucherNo AS referenceNumber,
+        0 AS balanceAfter,
+        'voucher' AS source
+       FROM contra_transactions ct
+       JOIN contra_vouchers cv ON ct.voucherId = cv.id
+       WHERE ct.fromAccount = ? OR ct.fromAccount = ?
+
+       UNION ALL
+
+       SELECT 
+        ct.id,
+        cv.date,
+        CONCAT('Contra Voucher (From Cash/Bank): ', IFNULL(ct.narration, IFNULL(cv.narration, ''))) AS description,
+        'credit' AS transactionType,
+        ct.amount,
+        'Contra' AS category,
+        cv.voucherNo AS referenceNumber,
+        0 AS balanceAfter,
+        'voucher' AS source
+       FROM contra_transactions ct
+       JOIN contra_vouchers cv ON ct.voucherId = cv.id
+       WHERE ct.toAccount = ? OR ct.toAccount = ?
+       
        ORDER BY date DESC`,
-      [accountId, bankIdStr]
+      [
+        accountId,
+        bankIdStr,
+        accountId,
+        bankIdStr,
+        accountId,
+        bankIdStr,
+        numericAccountId,
+        bankIdStr,
+        numericAccountId
+      ]
     );
 
     res.json({ success: true, transactions: rows });

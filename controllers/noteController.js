@@ -73,16 +73,29 @@ export const createDebitNote = async (req, res) => {
 
 export const getDebitNote = async (req, res) => {
   const { companyId } = req.params;
+  const creator = getCreatorFromRequest(req);
   try {
-    const [rows] = await pool.query(`
+    let query = `
       SELECT notes.*, 
              creator_user.name AS creator_name,
              emp_user.name AS employee_name
       FROM notes 
       LEFT JOIN users AS creator_user ON notes.created_by_user_id = creator_user.id
       LEFT JOIN users AS emp_user ON notes.created_by_employee_id = emp_user.employee_id
-      WHERE notes.companyId = ? AND notes.note_type = "debit" 
-      ORDER BY notes.id DESC`, [companyId]);
+      WHERE notes.companyId = ? AND notes.note_type = "debit"`;
+    const params = [companyId];
+
+    if (creator.employeeId) {
+      query += ` AND notes.created_by_employee_id = ?`;
+      params.push(creator.employeeId);
+    } else if (creator.userId) {
+      query += ` AND notes.created_by_user_id = ? AND (notes.created_by_employee_id IS NULL OR notes.created_by_employee_id = 0)`;
+      params.push(creator.userId);
+    }
+
+    query += ` ORDER BY notes.id DESC`;
+
+    const [rows] = await pool.query(query, params);
     res.status(200).json({ success: true, data: rows });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
@@ -161,16 +174,29 @@ export const createCreditNote = async (req, res) => {
 
 export const getCreditNotes = async (req, res) => {
   const { companyId } = req.params;
+  const creator = getCreatorFromRequest(req);
   try {
-    const [rows] = await pool.query(`
+    let query = `
       SELECT notes.*, 
              creator_user.name AS creator_name,
              emp_user.name AS employee_name
       FROM notes 
       LEFT JOIN users AS creator_user ON notes.created_by_user_id = creator_user.id
       LEFT JOIN users AS emp_user ON notes.created_by_employee_id = emp_user.employee_id
-      WHERE notes.companyId = ? AND notes.note_type = "credit" 
-      ORDER BY notes.id DESC`, [companyId]);
+      WHERE notes.companyId = ? AND notes.note_type = "credit"`;
+    const params = [companyId];
+
+    if (creator.employeeId) {
+      query += ` AND notes.created_by_employee_id = ?`;
+      params.push(creator.employeeId);
+    } else if (creator.userId) {
+      query += ` AND notes.created_by_user_id = ? AND (notes.created_by_employee_id IS NULL OR notes.created_by_employee_id = 0)`;
+      params.push(creator.userId);
+    }
+
+    query += ` ORDER BY notes.id DESC`;
+
+    const [rows] = await pool.query(query, params);
     res.status(200).json({ success: true, data: rows });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
