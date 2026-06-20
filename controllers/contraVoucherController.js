@@ -498,6 +498,7 @@ export const deleteContraVoucher = async (req, res) => {
 // UPDATE Contra Voucher
 export const updateContraVoucher = async (req, res) => {
   const { id } = req.params;
+  const creator = getCreatorFromRequest(req);
   const {
     voucherNo,
     date,

@@ -702,24 +702,64 @@ try {
     });
 
     // ----------------------------------------------------------
-    // 1️⃣1️⃣ FINAL TOTALS
+    // 1️⃣1️⃣ PROFIT & LOSS CALCULATION (like Tally)
+    // Income/Revenue natures → credit side
+    // Expense/Purchase natures → debit side
+    // Net P&L = total income credits - total expense debits
+    // ----------------------------------------------------------
+    const incomeNatures  = ["income", "revenue"];
+    const expenseNatures = ["expense", "expenses"];
+
+    let totalIncomeCredit  = 0;
+    let totalExpenseDebit  = 0;
+
+    ledgerList.forEach((l) => {
+      if (incomeNatures.includes(l.nature)) {
+        totalIncomeCredit  += l.closingCredit;
+        totalExpenseDebit  += l.closingDebit;   // rare reversed balance
+      }
+      if (expenseNatures.includes(l.nature)) {
+        totalExpenseDebit  += l.closingDebit;
+        totalIncomeCredit  += l.closingCredit;  // rare reversed balance
+      }
+    });
+
+    // Net P&L: positive = profit (credit side), negative = loss (debit side)
+    const netPL = totalIncomeCredit - totalExpenseDebit;
+    const profitLoss = {
+      debit:  netPL < 0 ? Math.abs(netPL) : 0,   // Loss → shows on Debit side
+      credit: netPL > 0 ? netPL : 0,              // Profit → shows on Credit side
+    };
+
+    // ----------------------------------------------------------
+    // 1️⃣2️⃣ FINAL TOTALS
     // ----------------------------------------------------------
     let grandTotalDebit = 0;
     let grandTotalCredit = 0;
 
     ledgerList.forEach((l) => {
-      grandTotalDebit += l.closingDebit;
+      grandTotalDebit  += l.closingDebit;
       grandTotalCredit += l.closingCredit;
     });
+
+    // Add P&L to grand totals (so it balances the books)
+    grandTotalDebit  += profitLoss.debit;
+    grandTotalCredit += profitLoss.credit;
+
+    // Difference in opening balances (any remaining imbalance after P&L)
+    const difference = grandTotalDebit - grandTotalCredit;
+    const grandTotal = Math.max(grandTotalDebit, grandTotalCredit);
 
     return res.status(200).json({
       success: true,
       message: "Trial Balance Generated",
       summary: {
-        totalDebit: grandTotalDebit,
+        totalDebit:  grandTotalDebit,
         totalCredit: grandTotalCredit,
-        difference: grandTotalDebit - grandTotalCredit,
+        difference,   // positive = debit heavy; negative = credit heavy
+        grandTotal,   // always equal on both sides after P&L + difference rows
       },
+      profitLoss,     // { debit, credit } — shown as "Profit & Loss" row in UI
       groupWise,
       ledgers: ledgerList
     });

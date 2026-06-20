@@ -190,18 +190,18 @@ export const createPurchaseVoucher = async (req, res) => {
       );
 
       if (stockCheck.length > 0) {
-          // Stock exists, no need to update opening balance
-        } else {
+        // Stock exists, no need to update opening balance
+      } else {
         await conn.query(
           `INSERT INTO stocks 
             (companyId, name, alias, under, units, maintainInBatches, trackDateOfManufacture, expiryDateOfBatches,
              rateOfDuty, gstApplicable, hsn, openingBalanceQty, openingBalanceRate, openingBalanceValue)
-           VALUES (?, ?, '', 'Purchases', 'Nos', 0, 0, 0, 0, 0, 0, 0, 0)`,
-            [
-              companyId,
-              item.item,
-              item.hsn_code || ''
-            ]
+           VALUES (?, ?, '', 'Purchases', 'Nos', 0, 0, 0, 0, 0, ?, 0, 0, 0)`,
+          [
+            companyId,
+            item.item,
+            item.hsn_code || ''
+          ]
         );
       }
     }
@@ -509,18 +509,18 @@ export const updatePurchaseVoucher = async (req, res) => {
       );
 
       if (stockCheck.length > 0) {
-          // Stock exists, no need to update opening balance
-        } else {
+        // Stock exists, no need to update opening balance
+      } else {
         await conn.query(
           `INSERT INTO stocks 
             (companyId, name, alias, under, units, maintainInBatches, trackDateOfManufacture, expiryDateOfBatches,
              rateOfDuty, gstApplicable, hsn, openingBalanceQty, openingBalanceRate, openingBalanceValue)
-           VALUES (?, ?, '', 'Purchases', 'Nos', 0, 0, 0, 0, 0, 0, 0, 0)`,
-            [
-              companyId,
-              item.item,
-              item.hsn_code || ''
-            ]
+           VALUES (?, ?, '', 'Purchases', 'Nos', 0, 0, 0, 0, 0, ?, 0, 0, 0)`,
+          [
+            companyId,
+            item.item,
+            item.hsn_code || ''
+          ]
         );
       }
     }
