@@ -76,39 +76,41 @@ export const getTransactions = async (req, res) => {
        UNION ALL
        
        SELECT 
-        id, 
-        date, 
-        CONCAT('Payment Voucher: ', IFNULL(narration, '')) AS description, 
+        pv.id, 
+        pv.date, 
+        CONCAT('Payment to: ', IFNULL(l.name, 'Unknown'), ' (Vch: ', pv.voucherNo, ')') AS description, 
         'debit' AS transactionType, 
-        amount, 
+        pv.amount, 
         'Payment' AS category, 
-        voucherNo AS referenceNumber, 
+        pv.voucherNo AS referenceNumber, 
         0 AS balanceAfter,
         'voucher' AS source
-       FROM payment_vouchers 
-       WHERE accountType = ? OR accountType = ?
+       FROM payment_vouchers pv
+       LEFT JOIN ledgers l ON pv.ledgerId = l.id
+       WHERE pv.accountType = ? OR pv.accountType = ?
        
        UNION ALL
        
        SELECT 
-        id, 
-        date, 
-        CONCAT('Receipt Voucher: ', IFNULL(narration, '')) AS description, 
+        rv.id, 
+        rv.date, 
+        CONCAT('Receipt from: ', IFNULL(l.name, 'Unknown'), ' (Vch: ', rv.voucherId, ')') AS description, 
         'credit' AS transactionType, 
-        amount, 
+        rv.amount, 
         'Receipt' AS category, 
-        voucherId AS referenceNumber, 
+        rv.voucherId AS referenceNumber, 
         0 AS balanceAfter,
         'voucher' AS source
-       FROM receive_vouchers 
-       WHERE receiptAccountId = ? OR receiptAccountId = ?
+       FROM receive_vouchers rv
+       LEFT JOIN ledgers l ON rv.customer = l.id
+       WHERE rv.receiptAccountId = ? OR rv.receiptAccountId = ?
 
        UNION ALL
 
        SELECT 
         ct.id,
         cv.date,
-        CONCAT('Contra Voucher (To Cash/Bank): ', IFNULL(ct.narration, IFNULL(cv.narration, ''))) AS description,
+        CONCAT('Contra Transfer to: ', IF(ct.toAccount = 0, 'Cash', IFNULL(ba.accountName, 'Unknown Bank')), ' (Vch: ', cv.voucherNo, ')') AS description,
         'debit' AS transactionType,
         ct.amount,
         'Contra' AS category,
@@ -117,6 +119,7 @@ export const getTransactions = async (req, res) => {
         'voucher' AS source
        FROM contra_transactions ct
        JOIN contra_vouchers cv ON ct.voucherId = cv.id
+       LEFT JOIN bank_accounts ba ON ct.toAccount = ba.id
        WHERE ct.fromAccount = ? OR ct.fromAccount = ?
 
        UNION ALL
@@ -124,7 +127,7 @@ export const getTransactions = async (req, res) => {
        SELECT 
         ct.id,
         cv.date,
-        CONCAT('Contra Voucher (From Cash/Bank): ', IFNULL(ct.narration, IFNULL(cv.narration, ''))) AS description,
+        CONCAT('Contra Transfer from: ', IF(ct.fromAccount = 0, 'Cash', IFNULL(ba.accountName, 'Unknown Bank')), ' (Vch: ', cv.voucherNo, ')') AS description,
         'credit' AS transactionType,
         ct.amount,
         'Contra' AS category,
@@ -133,15 +136,16 @@ export const getTransactions = async (req, res) => {
         'voucher' AS source
        FROM contra_transactions ct
        JOIN contra_vouchers cv ON ct.voucherId = cv.id
+       LEFT JOIN bank_accounts ba ON ct.fromAccount = ba.id
        WHERE ct.toAccount = ? OR ct.toAccount = ?
        
        ORDER BY date DESC`,
       [
         accountId,
         bankIdStr,
-        accountId,
+        numericAccountId,
         bankIdStr,
-        accountId,
+        numericAccountId,
         bankIdStr,
         numericAccountId,
         bankIdStr,

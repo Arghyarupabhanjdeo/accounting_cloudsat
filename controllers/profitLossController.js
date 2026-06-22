@@ -17,14 +17,17 @@ export const getProfitLoss = async (req, res) => {
 
   // default period
   const today = new Date();
-  const defaultTo = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-  const defaultFrom = new Date(defaultTo);
-  defaultFrom.setFullYear(defaultTo.getFullYear() - 1);
+  const defaultToStr = today.toISOString().slice(0, 10);
+  
+  const lastYear = new Date(today);
+  lastYear.setFullYear(today.getFullYear() - 1);
+  const defaultFromStr = lastYear.toISOString().slice(0, 10);
 
-  const from = qFrom ? new Date(qFrom) : defaultFrom;
-  const to = qTo ? new Date(qTo) : defaultTo;
+  const fromStr = qFrom || defaultFromStr;
+  const toStr = qTo || defaultToStr;
 
-  const formatDateSQL = (d) => d.toISOString().slice(0, 10);
+  const fromSQL = fromStr + " 00:00:00";
+  const toSQL = toStr + " 23:59:59";
 
   try {
     // 1) Load all ledgers
@@ -55,8 +58,7 @@ export const getProfitLoss = async (req, res) => {
     const ledgerIds = ledgers.map((l) => l.ledgerId);
     const inClause = ledgerIds.length ? ledgerIds : [0];
 
-    const fromSQL = formatDateSQL(from);
-    const toSQL = formatDateSQL(to);
+
 
     // 2) Aggregates
 
